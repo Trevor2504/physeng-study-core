@@ -31,6 +31,9 @@ def add_entry(payload: dict):
 def delete_entry(item_id: int):
     supabase.table("knowledge_base").delete().eq("id", item_id).execute()
 
+def update_entry(item_id: int, payload: dict):
+    supabase.table("knowledge_base").update(payload).eq("id", item_id).execute()
+
 # Fetch data for all categories
 physics_data = fetch_entries("physics")
 math_data = fetch_entries("math")
@@ -122,14 +125,30 @@ with tab_physics:
         else:
             for item in filtered:
                 with st.container(border=True):
-                    col1, col2 = st.columns([0.85, 0.15])
+                    col1, col2, col3 = st.columns([0.74, 0.13, 0.13])
                     with col1:
                         st.subheader(item["title"])
                         if item.get("formula"):
-                            st.latex(item["formula"])
+                            clean_formula = item["formula"].strip("$ ")
+                            if clean_formula:
+                                st.latex(clean_formula)
                         if item.get("description"):
                             st.write(item["description"])
                     with col2:
+                        with st.popover("✏️ Edit"):
+                            with st.form(f"edit_phys_form_{item['id']}"):
+                                edit_title = st.text_input("Title", value=item.get("title", ""))
+                                edit_formula = st.text_input("Formula (LaTeX)", value=item.get("formula", ""))
+                                edit_desc = st.text_area("Description", value=item.get("description", ""))
+                                if st.form_submit_button("Save Changes"):
+                                    update_entry(item["id"], {
+                                        "title": edit_title,
+                                        "formula": edit_formula,
+                                        "description": edit_desc
+                                    })
+                                    st.success("Updated!")
+                                    st.rerun()
+                    with col3:
                         if st.button("Delete", key=f"del_phys_{item['id']}"):
                             delete_entry(item["id"])
                             st.rerun()
@@ -172,14 +191,30 @@ with tab_math:
         else:
             for item in filtered:
                 with st.container(border=True):
-                    col1, col2 = st.columns([0.85, 0.15])
+                    col1, col2, col3 = st.columns([0.74, 0.13, 0.13])
                     with col1:
                         st.subheader(item["title"])
                         if item.get("formula"):
-                            st.latex(item["formula"])
+                            clean_formula = item["formula"].strip("$ ")
+                            if clean_formula:
+                                st.latex(clean_formula)
                         if item.get("description"):
                             st.write(item["description"])
                     with col2:
+                        with st.popover("✏️ Edit"):
+                            with st.form(f"edit_math_form_{item['id']}"):
+                                edit_title = st.text_input("Title", value=item.get("title", ""))
+                                edit_formula = st.text_input("Formula (LaTeX)", value=item.get("formula", ""))
+                                edit_desc = st.text_area("Description", value=item.get("description", ""))
+                                if st.form_submit_button("Save Changes"):
+                                    update_entry(item["id"], {
+                                        "title": edit_title,
+                                        "formula": edit_formula,
+                                        "description": edit_desc
+                                    })
+                                    st.success("Updated!")
+                                    st.rerun()
+                    with col3:
                         if st.button("Delete", key=f"del_math_{item['id']}"):
                             delete_entry(item["id"])
                             st.rerun()
@@ -222,7 +257,7 @@ with tab_cpp:
         else:
             for item in filtered:
                 with st.container(border=True):
-                    col1, col2 = st.columns([0.85, 0.15])
+                    col1, col2, col3 = st.columns([0.74, 0.13, 0.13])
                     with col1:
                         st.subheader(item["title"])
                         if item.get("note"):
@@ -230,6 +265,20 @@ with tab_cpp:
                         if item.get("code"):
                             st.code(item["code"], language="cpp")
                     with col2:
+                        with st.popover("✏️ Edit"):
+                            with st.form(f"edit_cpp_form_{item['id']}"):
+                                edit_title = st.text_input("Title", value=item.get("title", ""))
+                                edit_note = st.text_input("Note", value=item.get("note", ""))
+                                edit_code = st.text_area("C++ Code", value=item.get("code", ""), height=150)
+                                if st.form_submit_button("Save Changes"):
+                                    update_entry(item["id"], {
+                                        "title": edit_title,
+                                        "note": edit_note,
+                                        "code": edit_code
+                                    })
+                                    st.success("Updated!")
+                                    st.rerun()
+                    with col3:
                         if st.button("Delete", key=f"del_cpp_{item['id']}"):
                             delete_entry(item["id"])
                             st.rerun()
@@ -274,7 +323,7 @@ with tab_ielts:
         else:
             for item in filtered:
                 with st.container(border=True):
-                    col1, col2 = st.columns([0.85, 0.15])
+                    col1, col2, col3 = st.columns([0.74, 0.13, 0.13])
                     with col1:
                         st.markdown(f"### **{item['title']}** *({item.get('word_type', 'N/A')})*")
                         if item.get("definition"):
@@ -282,6 +331,25 @@ with tab_ielts:
                         if item.get("example"):
                             st.write(f"*Example:* {item['example']}")
                     with col2:
+                        with st.popover("✏️ Edit"):
+                            with st.form(f"edit_ielts_form_{item['id']}"):
+                                edit_word = st.text_input("Word / Phrase", value=item.get("title", ""))
+                                type_options = ["noun", "verb", "adjective", "adverb", "phrase", "idiom"]
+                                current_type = item.get("word_type", "noun")
+                                default_idx = type_options.index(current_type) if current_type in type_options else 0
+                                edit_type = st.selectbox("Type", type_options, index=default_idx)
+                                edit_def = st.text_input("Definition", value=item.get("definition", ""))
+                                edit_ex = st.text_input("Example", value=item.get("example", ""))
+                                if st.form_submit_button("Save Changes"):
+                                    update_entry(item["id"], {
+                                        "title": edit_word,
+                                        "word_type": edit_type,
+                                        "definition": edit_def,
+                                        "example": edit_ex
+                                    })
+                                    st.success("Updated!")
+                                    st.rerun()
+                    with col3:
                         if st.button("Delete", key=f"del_ielts_{item['id']}"):
                             delete_entry(item["id"])
                             st.rerun()
