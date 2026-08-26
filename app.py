@@ -14,8 +14,14 @@ DATA_FILE = "knowledge.json"
 def load_data():
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {"physics": [], "cpp": [], "ielts": []}
+            d = json.load(f)
+            # Ensure 'math' key exists in existing JSON files
+            d.setdefault("math", [])
+            d.setdefault("physics", [])
+            d.setdefault("cpp", [])
+            d.setdefault("ielts", [])
+            return d
+    return {"physics": [], "math": [], "cpp": [], "ielts": []}
 
 
 def save_data(data):
@@ -29,13 +35,18 @@ data = load_data()
 # App Header
 st.title("⚡ PhysEng Study Core v1.0")
 st.caption(
-    "Personal Knowledge Hub for Physics, C++ Engineering, and IELTS Preparation"
+    "Personal Knowledge Hub for Physics, Mathematics, C++ Engineering, and IELTS Preparation"
 )
 st.divider()
 
-# Tabs
-tab_physics, tab_cpp, tab_ielts = st.tabs(
-    ["📐 Physics & Chemistry", "💻 C++ Code Snippets", "🇬🇧 IELTS Vocabulary"]
+# Tabs (Added Mathematics Tab)
+tab_physics, tab_math, tab_cpp, tab_ielts = st.tabs(
+    [
+        "📐 Physics & Chemistry",
+        "🧮 Mathematics",
+        "💻 C++ Code Snippets",
+        "🇬🇧 IELTS Vocabulary",
+    ]
 )
 
 # ==========================================
@@ -49,7 +60,8 @@ with tab_physics:
         with st.form("physics_form", clear_on_submit=True):
             topic = st.text_input("Topic / Title", placeholder="e.g., Work Done")
             formula = st.text_input(
-                "LaTeX Formula (optional)", placeholder=r"e.g., W = F \cdot s \cdot \cos(\alpha)"
+                "LaTeX Formula (optional)",
+                placeholder=r"e.g., W = F \cdot s \cdot \cos(\alpha)",
             )
             description = st.text_area(
                 "Description / Notes",
@@ -71,7 +83,9 @@ with tab_physics:
 
     # Display entries
     if not data["physics"]:
-        st.info("No formulas added yet. Use the form above to add your first entry!")
+        st.info(
+            "No formulas added yet. Use the form above to add your first entry!"
+        )
     else:
         for idx, item in enumerate(data["physics"]):
             with st.container(border=True):
@@ -89,7 +103,62 @@ with tab_physics:
                         st.rerun()
 
 # ==========================================
-# TAB 2: C++ CODE SNIPPETS
+# TAB 2: MATHEMATICS (NEWLY ADDED)
+# ==========================================
+with tab_math:
+    st.header("Mathematics Knowledge Base")
+
+    # Form to add new math formula
+    with st.expander("➕ Add New Math Formula / Theorem"):
+        with st.form("math_form", clear_on_submit=True):
+            topic = st.text_input(
+                "Topic / Title", placeholder="e.g., Differential Equation of Motion"
+            )
+            formula = st.text_input(
+                "LaTeX Formula",
+                placeholder=r"e.g., \frac{d^2x}{dt^2} + \omega^2 x = 0",
+            )
+            description = st.text_area(
+                "Description / Notes",
+                placeholder="Explain concept, proof steps, or physical applications...",
+            )
+            submitted = st.form_submit_button("Save Entry")
+
+            if submitted and topic:
+                data["math"].append(
+                    {
+                        "topic": topic,
+                        "formula": formula,
+                        "description": description,
+                    }
+                )
+                save_data(data)
+                st.success("Successfully added to Mathematics database!")
+                st.rerun()
+
+    # Display entries
+    if not data["math"]:
+        st.info(
+            "No math formulas added yet. Use the form above to add your first entry!"
+        )
+    else:
+        for idx, item in enumerate(data["math"]):
+            with st.container(border=True):
+                col1, col2 = st.columns([0.85, 0.15])
+                with col1:
+                    st.subheader(item["topic"])
+                    if item["formula"]:
+                        st.latex(item["formula"])
+                    if item["description"]:
+                        st.write(item["description"])
+                with col2:
+                    if st.button("Delete", key=f"del_math_{idx}"):
+                        data["math"].pop(idx)
+                        save_data(data)
+                        st.rerun()
+
+# ==========================================
+# TAB 3: C++ CODE SNIPPETS
 # ==========================================
 with tab_cpp:
     st.header("C++ Code Snippets")
@@ -103,7 +172,9 @@ with tab_cpp:
             code = st.text_area(
                 "C++ Code", placeholder="void setup() {\n  ...\n}", height=150
             )
-            note = st.text_input("Notes / Hardware Pin", placeholder="e.g., Pin 13 LED")
+            note = st.text_input(
+                "Notes / Hardware Pin", placeholder="e.g., Pin 13 LED"
+            )
             submitted = st.form_submit_button("Save Code")
 
             if submitted and title and code:
@@ -131,7 +202,7 @@ with tab_cpp:
                         st.rerun()
 
 # ==========================================
-# TAB 3: IELTS VOCABULARY
+# TAB 4: IELTS VOCABULARY
 # ==========================================
 with tab_ielts:
     st.header("IELTS Vocabulary & Phrases")
@@ -139,15 +210,20 @@ with tab_ielts:
     # Form to add new word
     with st.expander("➕ Add New Word / Phrase"):
         with st.form("ielts_form", clear_on_submit=True):
-            word = st.text_input("Word / Phrase", placeholder="e.g., Perseverance")
+            word = st.text_input(
+                "Word / Phrase", placeholder="e.g., Perseverance"
+            )
             word_type = st.selectbox(
-                "Type", ["noun", "verb", "adjective", "adverb", "phrase", "idiom"]
+                "Type",
+                ["noun", "verb", "adjective", "adverb", "phrase", "idiom"],
             )
             definition = st.text_input(
-                "Definition", placeholder="e.g., Continued effort to achieve something"
+                "Definition",
+                placeholder="e.g., Continued effort to achieve something",
             )
             example = st.text_input(
-                "Example Sentence", placeholder="e.g., It takes perseverance to learn C++."
+                "Example Sentence",
+                placeholder="e.g., It takes perseverance to learn C++.",
             )
             submitted = st.form_submit_button("Save Word")
 
