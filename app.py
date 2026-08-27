@@ -1,4 +1,6 @@
 import json
+import numpy as np
+import pandas as pd
 import streamlit as st
 from supabase import create_client, Client
 
@@ -58,6 +60,7 @@ physics_data = fetch_entries("physics")
 math_data = fetch_entries("math")
 cpp_data = fetch_entries("cpp")
 ielts_data = fetch_entries("ielts")
+lab_data = fetch_entries("lab")
 
 # ==========================================
 # SIDEBAR: STATS & DATA MANAGEMENT
@@ -69,6 +72,7 @@ with st.sidebar:
     with col_s1:
         st.metric("Physics", len(physics_data))
         st.metric("C++ Code", len(cpp_data))
+        st.metric("Experiments", len(lab_data))
     with col_s2:
         st.metric("Math", len(math_data))
         st.metric("IELTS Words", len(ielts_data))
@@ -82,6 +86,7 @@ with st.sidebar:
         "math": math_data,
         "cpp": cpp_data,
         "ielts": ielts_data,
+        "lab": lab_data,
     }
     st.download_button(
         label="📥 Xuất dữ liệu JSON",
@@ -91,7 +96,7 @@ with st.sidebar:
         use_container_width=True
     )
 
-    # NEW: Import JSON Backup
+    # Import JSON Backup
     uploaded_file = st.file_uploader("📤 Nhập dữ liệu JSON (Restore)", type=["json"], key="json_uploader")
     if uploaded_file is not None:
         if st.button("🔄 Tiến hành Restore", use_container_width=True):
@@ -100,7 +105,6 @@ with st.sidebar:
                 count = 0
                 for cat, items in imported_json.items():
                     for entry in items:
-                        # Clean item payload removing auto-generated fields
                         clean_payload = {k: v for k, v in entry.items() if k not in ["id", "created_at"]}
                         if add_entry(clean_payload):
                             count += 1
@@ -110,17 +114,18 @@ with st.sidebar:
                 st.error(f"File JSON không hợp lệ: {err}")
 
 # App Header
-st.title("⚡ PhysEng Study Core v2.0 (Supabase Powered)")
-st.caption("Personal Knowledge Hub for Physics, Mathematics, C++ Engineering, and IELTS Preparation")
+st.title("⚡ PhysEng Study Core v2.5 (Supabase Powered)")
+st.caption("Personal Knowledge Hub for Physics, Mathematics, C++ Engineering, IELTS Preparation, and Physics Experiments")
 st.divider()
 
 # Tabs
-tab_physics, tab_math, tab_cpp, tab_ielts = st.tabs(
+tab_physics, tab_math, tab_cpp, tab_ielts, tab_lab = st.tabs(
     [
         "📐 Physics & Chemistry",
         "🧮 Mathematics",
         "💻 C++ Code Snippets",
         "🇬🇧 IELTS Vocabulary",
+        "🧪 Physics Experiments",
     ]
 )
 
@@ -396,5 +401,139 @@ with tab_ielts:
                         with st.popover("🗑️ Delete"):
                             st.write("Xác nhận xóa?")
                             if st.button("Xóa ngay", key=f"del_ielts_{item['id']}"):
+                                if delete_entry(item["id"]):
+                                    st.rerun()
+
+# ==========================================
+# TAB 5: PHYSICS EXPERIMENTS (NEW)
+# ==========================================
+with tab_lab:
+    st.header("🧪 Physics Lab & Interactive Simulations")
+
+    # SECTION 1: INTERACTIVE SIMULATION
+    st.subheader("1. 🎮 Bộ mô phỏng thí nghiệm: Va chạm 1D & Bảo toàn động lượng")
+    st.caption("Thử nghiệm tương tác để kiểm chứng Động lượng ($p = mv$) và Động năng ($E_k = \\frac{1}{2}mv^2$) trước/sau va chạm.")
+
+    sim_col1, sim_col2 = st.columns(2)
+
+    with sim_col1:
+        st.markdown("**Vật 1 ($m_1$)**")
+        m1 = st.slider("Khối lượng m1 (kg)", 0.5, 10.0, 2.0, 0.5)
+        v1 = st.slider("Vận tốc ban đầu v1 (m/s)", -10.0, 10.0, 5.0, 0.5)
+
+    with sim_col2:
+        st.markdown("**Vật 2 ($m_2$)**")
+        m2 = st.slider("Khối lượng m2 (kg)", 0.5, 10.0, 3.0, 0.5)
+        v2 = st.slider("Vận tốc ban đầu v2 (m/s)", -10.0, 10.0, -2.0, 0.5)
+
+    col_type, _ = st.columns([0.5, 0.5])
+    with col_type:
+        collision_type = st.radio("Loại va chạm", ["Va chạm đàn hồi (Elastic)", "Va chạm mềm (Inelastic)"], horizontal=True)
+
+    # Physics calculations
+    p_initial = m1 * v1 + m2 * v2
+    ek_initial = 0.5 * m1 * (v1 ** 2) + 0.5 * m2 * (v2 ** 2)
+
+    if " đàn hồi " in collision_type.lower():
+        v1_final = ((m1 - m2) * v1 + 2 * m2 * v2) / (m1 + m2)
+        v2_final = ((m2 - m1) * v2 + 2 * m1 * v1) / (m1 + m2)
+    else:  # Perfectly Inelastic
+        v_common = p_initial / (m1 + m2)
+        v1_final = v_common
+        v2_final = v_common
+
+    p_final = m1 * v1_final + m2 * v2_final
+    ek_final = 0.5 * m1 * (v1_final ** 2) + 0.5 * m2 * (v2_final ** 2)
+
+    # Simulation results metrics
+    m_col1, m_col2, m_col3, m_col4 = st.columns(4)
+    m_col1.metric("Vận tốc v1' sau VC", f"{v1_final:.2f} m/s")
+    m_col2.metric("Vận tốc v2' sau VC", f"{v2_final:.2f} m/s")
+    m_col3.metric("Động lượng (Trước / Sau)", f"{p_initial:.2f} / {p_final:.2f}", delta=f"{p_final - p_initial:.2f}")
+    m_col4.metric("Động năng (Trước / Sau)", f"{ek_initial:.2f} / {ek_final:.2f} J", delta=f"{ek_final - ek_initial:.2f} J")
+
+    # Plot trajectories x(t)
+    t_collision = 2.0
+    time_before = np.linspace(0, t_collision, 20)
+    time_after = np.linspace(t_collision, 5.0, 30)
+
+    x1_0, x2_0 = 0.0, 10.0
+    x1_before = x1_0 + v1 * time_before
+    x2_before = x2_0 + v2 * time_before
+
+    x_collision = x1_before[-1]
+    x1_after = x_collision + v1_final * (time_after - t_collision)
+    x2_after = x_collision + v2_final * (time_after - t_collision)
+
+    df_sim = pd.DataFrame({
+        "Thời gian (s)": np.concatenate([time_before, time_after]),
+        "Vị trí Vật 1 (m)": np.concatenate([x1_before, x1_after]),
+        "Vị trí Vật 2 (m)": np.concatenate([x2_before, x2_after])
+    }).set_index("Thời gian (s)")
+
+    st.line_chart(df_sim)
+
+    st.divider()
+
+    # SECTION 2: LAB EXPERIMENT LOG (SUPABASE CRUD)
+    st.subheader("2. 📝 Quản lý nhật ký thí nghiệm (Supabase)")
+
+    with st.expander("➕ Tạo & lưu bài thí nghiệm mới"):
+        with st.form("lab_form", clear_on_submit=True):
+            exp_title = st.text_input("Tên bài thí nghiệm", placeholder="e.g., Kiểm chứng định luật bảo toàn động lượng")
+            equipment = st.text_input("Dụng cụ & Thiết bị", placeholder="e.g., Đệm không khí, cổng quang điện, xe trượt")
+            description = st.text_area("Mô tả, các bước tiến hành & Kết luận", placeholder="Ghi chép diễn biến thí nghiệm, sai số, kết luận...")
+            submitted = st.form_submit_button("Lưu thí nghiệm")
+
+            if submitted and exp_title:
+                if add_entry({
+                    "category": "lab",
+                    "title": exp_title,
+                    "formula": equipment,
+                    "description": description
+                }):
+                    st.success("Đã lưu bài thí nghiệm vào Supabase!")
+                    st.rerun()
+
+    search_lab = st.text_input("🔍 Tìm kiếm bài thí nghiệm...", key="search_lab")
+
+    if not lab_data:
+        st.info("Chưa có bài thí nghiệm nào được lưu.")
+    else:
+        filtered_lab = [
+            item for item in lab_data
+            if not search_lab or search_lab.lower() in item["title"].lower() or search_lab.lower() in (item.get("description") or "").lower()
+        ]
+
+        if not filtered_lab:
+            st.warning("Không tìm thấy bài thí nghiệm phù hợp.")
+        else:
+            for item in filtered_lab:
+                with st.container(border=True):
+                    col1, col2, col3 = st.columns([0.74, 0.13, 0.13])
+                    with col1:
+                        st.subheader(f"🧪 {item['title']}")
+                        if item.get("formula"):
+                            st.caption(f"🛠️ Dụng cụ: {item['formula']}")
+                        if item.get("description"):
+                            st.write(item["description"])
+                    with col2:
+                        with st.popover("✏️ Edit"):
+                            with st.form(f"edit_lab_form_{item['id']}"):
+                                edit_title = st.text_input("Tên bài", value=item.get("title", ""))
+                                edit_equip = st.text_input("Dụng cụ", value=item.get("formula", ""))
+                                edit_desc = st.text_area("Nội dung & Kết quả", value=item.get("description", ""))
+                                if st.form_submit_button("Save Changes"):
+                                    if update_entry(item["id"], {
+                                        "title": edit_title,
+                                        "formula": edit_equip,
+                                        "description": edit_desc
+                                    }):
+                                        st.success("Updated!")
+                                        st.rerun()
+                    with col3:
+                        with st.popover("🗑️ Delete"):
+                            st.write("Xác nhận xóa?")
+                            if st.button("Xóa ngay", key=f"del_lab_{item['id']}"):
                                 if delete_entry(item["id"]):
                                     st.rerun()
