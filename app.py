@@ -20,19 +20,38 @@ def init_supabase() -> Client:
 
 supabase = init_supabase()
 
-# Helper Functions for Supabase Operations
+# Helper Functions for Supabase Operations (Enhanced with Error Handling)
 def fetch_entries(category: str):
-    res = supabase.table("knowledge_base").select("*").eq("category", category).order("id", desc=True).execute()
-    return res.data or []
+    try:
+        res = supabase.table("knowledge_base").select("*").eq("category", category).order("id", desc=True).execute()
+        return res.data or []
+    except Exception as e:
+        st.error(f"Lỗi tải dữ liệu ({category}): {e}")
+        return []
 
 def add_entry(payload: dict):
-    supabase.table("knowledge_base").insert(payload).execute()
+    try:
+        supabase.table("knowledge_base").insert(payload).execute()
+        return True
+    except Exception as e:
+        st.error(f"Lỗi thêm dữ liệu: {e}")
+        return False
 
 def delete_entry(item_id: int):
-    supabase.table("knowledge_base").delete().eq("id", item_id).execute()
+    try:
+        supabase.table("knowledge_base").delete().eq("id", item_id).execute()
+        return True
+    except Exception as e:
+        st.error(f"Lỗi xóa dữ liệu: {e}")
+        return False
 
 def update_entry(item_id: int, payload: dict):
-    supabase.table("knowledge_base").update(payload).eq("id", item_id).execute()
+    try:
+        supabase.table("knowledge_base").update(payload).eq("id", item_id).execute()
+        return True
+    except Exception as e:
+        st.error(f"Lỗi cập nhật dữ liệu: {e}")
+        return False
 
 # Fetch data for all categories
 physics_data = fetch_entries("physics")
@@ -55,7 +74,7 @@ with st.sidebar:
         st.metric("IELTS Words", len(ielts_data))
     
     st.divider()
-    st.subheader("💾 Tải dữ liệu về máy")
+    st.subheader("💾 Quản lý dữ liệu")
     
     # Export current database to JSON format
     all_data = {
@@ -71,6 +90,24 @@ with st.sidebar:
         mime="application/json",
         use_container_width=True
     )
+
+    # NEW: Import JSON Backup
+    uploaded_file = st.file_uploader("📤 Nhập dữ liệu JSON (Restore)", type=["json"], key="json_uploader")
+    if uploaded_file is not None:
+        if st.button("🔄 Tiến hành Restore", use_container_width=True):
+            try:
+                imported_json = json.load(uploaded_file)
+                count = 0
+                for cat, items in imported_json.items():
+                    for entry in items:
+                        # Clean item payload removing auto-generated fields
+                        clean_payload = {k: v for k, v in entry.items() if k not in ["id", "created_at"]}
+                        if add_entry(clean_payload):
+                            count += 1
+                st.success(f"Khôi phục thành công {count} mục!")
+                st.rerun()
+            except Exception as err:
+                st.error(f"File JSON không hợp lệ: {err}")
 
 # App Header
 st.title("⚡ PhysEng Study Core v2.0 (Supabase Powered)")
@@ -101,14 +138,14 @@ with tab_physics:
             submitted = st.form_submit_button("Save Entry")
 
             if submitted and topic:
-                add_entry({
+                if add_entry({
                     "category": "physics",
                     "title": topic,
                     "formula": formula,
                     "description": description
-                })
-                st.success("Successfully saved to Supabase!")
-                st.rerun()
+                }):
+                    st.success("Successfully saved to Supabase!")
+                    st.rerun()
 
     search_phys = st.text_input("🔍 Search Physics entries...", key="search_phys")
 
@@ -141,17 +178,19 @@ with tab_physics:
                                 edit_formula = st.text_input("Formula (LaTeX)", value=item.get("formula", ""))
                                 edit_desc = st.text_area("Description", value=item.get("description", ""))
                                 if st.form_submit_button("Save Changes"):
-                                    update_entry(item["id"], {
+                                    if update_entry(item["id"], {
                                         "title": edit_title,
                                         "formula": edit_formula,
                                         "description": edit_desc
-                                    })
-                                    st.success("Updated!")
-                                    st.rerun()
+                                    }):
+                                        st.success("Updated!")
+                                        st.rerun()
                     with col3:
-                        if st.button("Delete", key=f"del_phys_{item['id']}"):
-                            delete_entry(item["id"])
-                            st.rerun()
+                        with st.popover("🗑️ Delete"):
+                            st.write("Xác nhận xóa?")
+                            if st.button("Xóa ngay", key=f"del_phys_{item['id']}"):
+                                if delete_entry(item["id"]):
+                                    st.rerun()
 
 # ==========================================
 # TAB 2: MATHEMATICS
@@ -167,14 +206,14 @@ with tab_math:
             submitted = st.form_submit_button("Save Entry")
 
             if submitted and topic:
-                add_entry({
+                if add_entry({
                     "category": "math",
                     "title": topic,
                     "formula": formula,
                     "description": description
-                })
-                st.success("Successfully saved to Supabase!")
-                st.rerun()
+                }):
+                    st.success("Successfully saved to Supabase!")
+                    st.rerun()
 
     search_math = st.text_input("🔍 Search Math entries...", key="search_math")
 
@@ -207,17 +246,19 @@ with tab_math:
                                 edit_formula = st.text_input("Formula (LaTeX)", value=item.get("formula", ""))
                                 edit_desc = st.text_area("Description", value=item.get("description", ""))
                                 if st.form_submit_button("Save Changes"):
-                                    update_entry(item["id"], {
+                                    if update_entry(item["id"], {
                                         "title": edit_title,
                                         "formula": edit_formula,
                                         "description": edit_desc
-                                    })
-                                    st.success("Updated!")
-                                    st.rerun()
+                                    }):
+                                        st.success("Updated!")
+                                        st.rerun()
                     with col3:
-                        if st.button("Delete", key=f"del_math_{item['id']}"):
-                            delete_entry(item["id"])
-                            st.rerun()
+                        with st.popover("🗑️ Delete"):
+                            st.write("Xác nhận xóa?")
+                            if st.button("Xóa ngay", key=f"del_math_{item['id']}"):
+                                if delete_entry(item["id"]):
+                                    st.rerun()
 
 # ==========================================
 # TAB 3: C++ CODE SNIPPETS
@@ -233,14 +274,14 @@ with tab_cpp:
             submitted = st.form_submit_button("Save Code")
 
             if submitted and title and code:
-                add_entry({
+                if add_entry({
                     "category": "cpp",
                     "title": title,
                     "code": code,
                     "note": note
-                })
-                st.success("Successfully saved C++ snippet!")
-                st.rerun()
+                }):
+                    st.success("Successfully saved C++ snippet!")
+                    st.rerun()
 
     search_cpp = st.text_input("🔍 Search C++ snippets...", key="search_cpp")
 
@@ -271,17 +312,19 @@ with tab_cpp:
                                 edit_note = st.text_input("Note", value=item.get("note", ""))
                                 edit_code = st.text_area("C++ Code", value=item.get("code", ""), height=150)
                                 if st.form_submit_button("Save Changes"):
-                                    update_entry(item["id"], {
+                                    if update_entry(item["id"], {
                                         "title": edit_title,
                                         "note": edit_note,
                                         "code": edit_code
-                                    })
-                                    st.success("Updated!")
-                                    st.rerun()
+                                    }):
+                                        st.success("Updated!")
+                                        st.rerun()
                     with col3:
-                        if st.button("Delete", key=f"del_cpp_{item['id']}"):
-                            delete_entry(item["id"])
-                            st.rerun()
+                        with st.popover("🗑️ Delete"):
+                            st.write("Xác nhận xóa?")
+                            if st.button("Xóa ngay", key=f"del_cpp_{item['id']}"):
+                                if delete_entry(item["id"]):
+                                    st.rerun()
 
 # ==========================================
 # TAB 4: IELTS VOCABULARY
@@ -298,15 +341,15 @@ with tab_ielts:
             submitted = st.form_submit_button("Save Word")
 
             if submitted and word:
-                add_entry({
+                if add_entry({
                     "category": "ielts",
                     "title": word,
                     "word_type": word_type,
                     "definition": definition,
                     "example": example
-                })
-                st.success("Successfully saved word!")
-                st.rerun()
+                }):
+                    st.success("Successfully saved word!")
+                    st.rerun()
 
     search_ielts = st.text_input("🔍 Search Vocabulary...", key="search_ielts")
 
@@ -341,15 +384,17 @@ with tab_ielts:
                                 edit_def = st.text_input("Definition", value=item.get("definition", ""))
                                 edit_ex = st.text_input("Example", value=item.get("example", ""))
                                 if st.form_submit_button("Save Changes"):
-                                    update_entry(item["id"], {
+                                    if update_entry(item["id"], {
                                         "title": edit_word,
                                         "word_type": edit_type,
                                         "definition": edit_def,
                                         "example": edit_ex
-                                    })
-                                    st.success("Updated!")
-                                    st.rerun()
+                                    }):
+                                        st.success("Updated!")
+                                        st.rerun()
                     with col3:
-                        if st.button("Delete", key=f"del_ielts_{item['id']}"):
-                            delete_entry(item["id"])
-                            st.rerun()
+                        with st.popover("🗑️ Delete"):
+                            st.write("Xác nhận xóa?")
+                            if st.button("Xóa ngay", key=f"del_ielts_{item['id']}"):
+                                if delete_entry(item["id"]):
+                                    st.rerun()
