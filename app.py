@@ -11,7 +11,7 @@ st.set_page_config(
 )
 
 # Configure Gemini API Key (Fallback to provided key if not in secrets)
-GEMINI_KEY = st.secrets.get("gemini", {}).get("API_KEY", "AQ.Ab8RN6LSbEW6T2CoSOi--DHQqOUw5J3EomhnroE7H6uH9tl5_A")
+GEMINI_KEY = st.secrets.get("gemini", {}).get("API_KEY", "AQ.Ab8RN6JrbUigObdCPRd5LqfusjCLBOccO2B2q6D1SAhnw0vwHQ")
 try:
     genai.configure(api_key=GEMINI_KEY)
     gemini_model = genai.GenerativeModel("gemini-1.5-flash")
