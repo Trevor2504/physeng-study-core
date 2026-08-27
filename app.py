@@ -2,12 +2,21 @@ import json
 import numpy as np
 import pandas as pd
 import streamlit as st
+import google.generativeai as genai
 from supabase import create_client, Client
 
 # Page Configuration
 st.set_page_config(
     page_title="PhysEng Study Core", page_icon="⚡", layout="wide"
 )
+
+# Configure Gemini API Key (Fallback to provided key if not in secrets)
+GEMINI_KEY = st.secrets.get("gemini", {}).get("API_KEY", "AQ.Ab8RN6LSbEW6T2CoSOi--DHQqOUw5J3EomhnroE7H6uH9tl5_A")
+try:
+    genai.configure(api_key=GEMINI_KEY)
+    gemini_model = genai.GenerativeModel("gemini-1.5-flash")
+except Exception as e:
+    gemini_model = None
 
 # Initialize Supabase Client
 @st.cache_resource
@@ -17,18 +26,18 @@ def init_supabase() -> Client:
         key = st.secrets["supabase"]["SUPABASE_KEY"]
         return create_client(url, key)
     except Exception as e:
-        st.error("Chưa cấu hình Supabase Secrets trong .streamlit/secrets.toml!")
+        st.error("Supabase Secrets not configured in .streamlit/secrets.toml!")
         st.stop()
 
 supabase = init_supabase()
 
-# Helper Functions for Supabase Operations (Enhanced with Error Handling)
+# Helper Functions for Supabase Operations
 def fetch_entries(category: str):
     try:
         res = supabase.table("knowledge_base").select("*").eq("category", category).order("id", desc=True).execute()
         return res.data or []
     except Exception as e:
-        st.error(f"Lỗi tải dữ liệu ({category}): {e}")
+        st.error(f"Error fetching data ({category}): {e}")
         return []
 
 def add_entry(payload: dict):
@@ -36,7 +45,7 @@ def add_entry(payload: dict):
         supabase.table("knowledge_base").insert(payload).execute()
         return True
     except Exception as e:
-        st.error(f"Lỗi thêm dữ liệu: {e}")
+        st.error(f"Error adding entry: {e}")
         return False
 
 def delete_entry(item_id: int):
@@ -44,7 +53,7 @@ def delete_entry(item_id: int):
         supabase.table("knowledge_base").delete().eq("id", item_id).execute()
         return True
     except Exception as e:
-        st.error(f"Lỗi xóa dữ liệu: {e}")
+        st.error(f"Error deleting entry: {e}")
         return False
 
 def update_entry(item_id: int, payload: dict):
@@ -52,7 +61,7 @@ def update_entry(item_id: int, payload: dict):
         supabase.table("knowledge_base").update(payload).eq("id", item_id).execute()
         return True
     except Exception as e:
-        st.error(f"Lỗi cập nhật dữ liệu: {e}")
+        st.error(f"Error updating entry: {e}")
         return False
 
 # Fetch data for all categories
@@ -66,7 +75,7 @@ lab_data = fetch_entries("lab")
 # SIDEBAR: STATS & DATA MANAGEMENT
 # ==========================================
 with st.sidebar:
-    st.header("📊 Thống kê Supabase")
+    st.header("📊 Supabase Statistics")
     
     col_s1, col_s2 = st.columns(2)
     with col_s1:
@@ -78,7 +87,7 @@ with st.sidebar:
         st.metric("IELTS Words", len(ielts_data))
     
     st.divider()
-    st.subheader("💾 Quản lý dữ liệu")
+    st.subheader("💾 Data Management")
     
     # Export current database to JSON format
     all_data = {
@@ -89,7 +98,7 @@ with st.sidebar:
         "lab": lab_data,
     }
     st.download_button(
-        label="📥 Xuất dữ liệu JSON",
+        label="📥 Export JSON Backup",
         data=json.dumps(all_data, ensure_ascii=False, indent=4),
         file_name="knowledge_backup.json",
         mime="application/json",
@@ -97,9 +106,9 @@ with st.sidebar:
     )
 
     # Import JSON Backup
-    uploaded_file = st.file_uploader("📤 Nhập dữ liệu JSON (Restore)", type=["json"], key="json_uploader")
+    uploaded_file = st.file_uploader("📤 Import JSON Backup (Restore)", type=["json"], key="json_uploader")
     if uploaded_file is not None:
-        if st.button("🔄 Tiến hành Restore", use_container_width=True):
+        if st.button("🔄 Perform Restore", use_container_width=True):
             try:
                 imported_json = json.load(uploaded_file)
                 count = 0
@@ -108,14 +117,14 @@ with st.sidebar:
                         clean_payload = {k: v for k, v in entry.items() if k not in ["id", "created_at"]}
                         if add_entry(clean_payload):
                             count += 1
-                st.success(f"Khôi phục thành công {count} mục!")
+                st.success(f"Successfully restored {count} entries!")
                 st.rerun()
             except Exception as err:
-                st.error(f"File JSON không hợp lệ: {err}")
+                st.error(f"Invalid JSON file: {err}")
 
 # App Header
-st.title("⚡ PhysEng Study Core v2.5 (Supabase Powered)")
-st.caption("Personal Knowledge Hub for Physics, Mathematics, C++ Engineering, IELTS Preparation, and Physics Experiments")
+st.title("⚡ PhysEng Study Core v3.0")
+st.caption("Personal Knowledge Hub for Physics, Mathematics, C++ Engineering, IELTS Preparation, and AI Experiments")
 st.divider()
 
 # Tabs
@@ -125,7 +134,7 @@ tab_physics, tab_math, tab_cpp, tab_ielts, tab_lab = st.tabs(
         "🧮 Mathematics",
         "💻 C++ Code Snippets",
         "🇬🇧 IELTS Vocabulary",
-        "🧪 Physics Experiments",
+        "🧪 Physics Experiments & AI",
     ]
 )
 
@@ -192,8 +201,8 @@ with tab_physics:
                                         st.rerun()
                     with col3:
                         with st.popover("🗑️ Delete"):
-                            st.write("Xác nhận xóa?")
-                            if st.button("Xóa ngay", key=f"del_phys_{item['id']}"):
+                            st.write("Confirm deletion?")
+                            if st.button("Delete Now", key=f"del_phys_{item['id']}"):
                                 if delete_entry(item["id"]):
                                     st.rerun()
 
@@ -260,8 +269,8 @@ with tab_math:
                                         st.rerun()
                     with col3:
                         with st.popover("🗑️ Delete"):
-                            st.write("Xác nhận xóa?")
-                            if st.button("Xóa ngay", key=f"del_math_{item['id']}"):
+                            st.write("Confirm deletion?")
+                            if st.button("Delete Now", key=f"del_math_{item['id']}"):
                                 if delete_entry(item["id"]):
                                     st.rerun()
 
@@ -326,8 +335,8 @@ with tab_cpp:
                                         st.rerun()
                     with col3:
                         with st.popover("🗑️ Delete"):
-                            st.write("Xác nhận xóa?")
-                            if st.button("Xóa ngay", key=f"del_cpp_{item['id']}"):
+                            st.write("Confirm deletion?")
+                            if st.button("Delete Now", key=f"del_cpp_{item['id']}"):
                                 if delete_entry(item["id"]):
                                     st.rerun()
 
@@ -399,42 +408,42 @@ with tab_ielts:
                                         st.rerun()
                     with col3:
                         with st.popover("🗑️ Delete"):
-                            st.write("Xác nhận xóa?")
-                            if st.button("Xóa ngay", key=f"del_ielts_{item['id']}"):
+                            st.write("Confirm deletion?")
+                            if st.button("Delete Now", key=f"del_ielts_{item['id']}"):
                                 if delete_entry(item["id"]):
                                     st.rerun()
 
 # ==========================================
-# TAB 5: PHYSICS EXPERIMENTS (NEW)
+# TAB 5: PHYSICS EXPERIMENTS & AI
 # ==========================================
 with tab_lab:
-    st.header("🧪 Physics Lab & Interactive Simulations")
+    st.header("🧪 Physics Lab, Simulations & AI Generator")
 
     # SECTION 1: INTERACTIVE SIMULATION
-    st.subheader("1. 🎮 Bộ mô phỏng thí nghiệm: Va chạm 1D & Bảo toàn động lượng")
-    st.caption("Thử nghiệm tương tác để kiểm chứng Động lượng ($p = mv$) và Động năng ($E_k = \\frac{1}{2}mv^2$) trước/sau va chạm.")
+    st.subheader("1. 🎮 Interactive Simulator: 1D Collision & Momentum Conservation")
+    st.caption("Interactive experiment to verify Momentum ($p = mv$) and Kinetic Energy ($E_k = \\frac{1}{2}mv^2$) before and after collision.")
 
     sim_col1, sim_col2 = st.columns(2)
 
     with sim_col1:
-        st.markdown("**Vật 1 ($m_1$)**")
-        m1 = st.slider("Khối lượng m1 (kg)", 0.5, 10.0, 2.0, 0.5)
-        v1 = st.slider("Vận tốc ban đầu v1 (m/s)", -10.0, 10.0, 5.0, 0.5)
+        st.markdown("**Object 1 ($m_1$)**")
+        m1 = st.slider("Mass m1 (kg)", 0.5, 10.0, 2.0, 0.5)
+        v1 = st.slider("Initial Velocity v1 (m/s)", -10.0, 10.0, 5.0, 0.5)
 
     with sim_col2:
-        st.markdown("**Vật 2 ($m_2$)**")
-        m2 = st.slider("Khối lượng m2 (kg)", 0.5, 10.0, 3.0, 0.5)
-        v2 = st.slider("Vận tốc ban đầu v2 (m/s)", -10.0, 10.0, -2.0, 0.5)
+        st.markdown("**Object 2 ($m_2$)**")
+        m2 = st.slider("Mass m2 (kg)", 0.5, 10.0, 3.0, 0.5)
+        v2 = st.slider("Initial Velocity v2 (m/s)", -10.0, 10.0, -2.0, 0.5)
 
     col_type, _ = st.columns([0.5, 0.5])
     with col_type:
-        collision_type = st.radio("Loại va chạm", ["Va chạm đàn hồi (Elastic)", "Va chạm mềm (Inelastic)"], horizontal=True)
+        collision_type = st.radio("Collision Type", ["Elastic Collision", "Inelastic Collision"], horizontal=True)
 
     # Physics calculations
     p_initial = m1 * v1 + m2 * v2
     ek_initial = 0.5 * m1 * (v1 ** 2) + 0.5 * m2 * (v2 ** 2)
 
-    if " đàn hồi " in collision_type.lower():
+    if "elastic" in collision_type.lower():
         v1_final = ((m1 - m2) * v1 + 2 * m2 * v2) / (m1 + m2)
         v2_final = ((m2 - m1) * v2 + 2 * m1 * v1) / (m1 + m2)
     else:  # Perfectly Inelastic
@@ -447,10 +456,10 @@ with tab_lab:
 
     # Simulation results metrics
     m_col1, m_col2, m_col3, m_col4 = st.columns(4)
-    m_col1.metric("Vận tốc v1' sau VC", f"{v1_final:.2f} m/s")
-    m_col2.metric("Vận tốc v2' sau VC", f"{v2_final:.2f} m/s")
-    m_col3.metric("Động lượng (Trước / Sau)", f"{p_initial:.2f} / {p_final:.2f}", delta=f"{p_final - p_initial:.2f}")
-    m_col4.metric("Động năng (Trước / Sau)", f"{ek_initial:.2f} / {ek_final:.2f} J", delta=f"{ek_final - ek_initial:.2f} J")
+    m_col1.metric("Final Velocity v1'", f"{v1_final:.2f} m/s")
+    m_col2.metric("Final Velocity v2'", f"{v2_final:.2f} m/s")
+    m_col3.metric("Momentum (Initial / Final)", f"{p_initial:.2f} / {p_final:.2f}", delta=f"{p_final - p_initial:.2f}")
+    m_col4.metric("Kinetic Energy (Initial / Final)", f"{ek_initial:.2f} / {ek_final:.2f} J", delta=f"{ek_final - ek_initial:.2f} J")
 
     # Plot trajectories x(t)
     t_collision = 2.0
@@ -466,24 +475,84 @@ with tab_lab:
     x2_after = x_collision + v2_final * (time_after - t_collision)
 
     df_sim = pd.DataFrame({
-        "Thời gian (s)": np.concatenate([time_before, time_after]),
-        "Vị trí Vật 1 (m)": np.concatenate([x1_before, x1_after]),
-        "Vị trí Vật 2 (m)": np.concatenate([x2_before, x2_after])
-    }).set_index("Thời gian (s)")
+        "Time (s)": np.concatenate([time_before, time_after]),
+        "Position Object 1 (m)": np.concatenate([x1_before, x1_after]),
+        "Position Object 2 (m)": np.concatenate([x2_before, x2_after])
+    }).set_index("Time (s)")
 
     st.line_chart(df_sim)
 
     st.divider()
 
-    # SECTION 2: LAB EXPERIMENT LOG (SUPABASE CRUD)
-    st.subheader("2. 📝 Quản lý nhật ký thí nghiệm (Supabase)")
+    # SECTION 2: AI EXPERIMENT GENERATOR (NEW)
+    st.subheader("2. 🤖 AI Experiment Generator (Gemini Powered)")
+    st.caption("Enter any topic or concept, and AI will automatically draft a structured lab experiment setup for you.")
 
-    with st.expander("➕ Tạo & lưu bài thí nghiệm mới"):
+    ai_prompt = st.text_input(
+        "💡 What experiment would you like to design?",
+        placeholder="e.g., Conservation of Mechanical Energy, Measuring Planck's Constant, RLC Circuits..."
+    )
+
+    if st.button("✨ Generate Experiment with AI", use_container_width=True):
+        if not ai_prompt:
+            st.warning("Please enter an experiment topic!")
+        elif not gemini_model:
+            st.error("Gemini API is not configured properly.")
+        else:
+            with st.spinner("AI is designing the experiment setup..."):
+                prompt_template = f"""
+                You are an expert Physics Professor and Experimentalist. Design a complete lab experiment for the topic: "{ai_prompt}".
+                Return ONLY a valid JSON object matching this schema:
+                {{
+                  "title": "Experiment Title",
+                  "equipment": "List of required apparatus and tools",
+                  "theory": "Theoretical foundation and key equations (LaTeX format where applicable)",
+                  "procedure": "Step-by-step procedure, data collection, and error analysis guidance"
+                }}
+                """
+                try:
+                    response = gemini_model.generate_content(
+                        prompt_template,
+                        generation_config={"response_mime_type": "application/json"}
+                    )
+                    exp_data = json.loads(response.text)
+                    st.session_state["last_ai_exp"] = exp_data
+                    st.success("Experiment generated successfully!")
+                except Exception as e:
+                    st.error(f"Error generating experiment with AI: {e}")
+
+    # Display generated AI experiment if available
+    if "last_ai_exp" in st.session_state:
+        exp_data = st.session_state["last_ai_exp"]
+        with st.container(border=True):
+            st.markdown(f"### 🧪 {exp_data.get('title')}")
+            st.markdown(f"**🛠️ Equipment:** {exp_data.get('equipment')}")
+            st.markdown(f"**📐 Theory & Formulas:**\n{exp_data.get('theory')}")
+            st.markdown(f"**📝 Procedure & Analysis:**\n{exp_data.get('procedure')}")
+
+            if st.button("💾 Save Generated Experiment to Supabase Log", use_container_width=True):
+                payload = {
+                    "category": "lab",
+                    "title": exp_data.get("title", "AI Experiment"),
+                    "formula": exp_data.get("equipment", ""),
+                    "description": f"THEORY:\n{exp_data.get('theory')}\n\nPROCEDURE:\n{exp_data.get('procedure')}"
+                }
+                if add_entry(payload):
+                    st.success("Saved to Supabase database!")
+                    del st.session_state["last_ai_exp"]
+                    st.rerun()
+
+    st.divider()
+
+    # SECTION 3: LAB EXPERIMENT LOG (SUPABASE CRUD)
+    st.subheader("3. 📝 Lab Experiment Log & History (Supabase)")
+
+    with st.expander("➕ Add New Manual Experiment Entry"):
         with st.form("lab_form", clear_on_submit=True):
-            exp_title = st.text_input("Tên bài thí nghiệm", placeholder="e.g., Kiểm chứng định luật bảo toàn động lượng")
-            equipment = st.text_input("Dụng cụ & Thiết bị", placeholder="e.g., Đệm không khí, cổng quang điện, xe trượt")
-            description = st.text_area("Mô tả, các bước tiến hành & Kết luận", placeholder="Ghi chép diễn biến thí nghiệm, sai số, kết luận...")
-            submitted = st.form_submit_button("Lưu thí nghiệm")
+            exp_title = st.text_input("Experiment Title", placeholder="e.g., Verifying Conservation of Linear Momentum")
+            equipment = st.text_input("Equipment & Tools", placeholder="e.g., Air track, photogates, gliders")
+            description = st.text_area("Description, Procedure & Conclusion", placeholder="Record observations, calculations, error analysis...")
+            submitted = st.form_submit_button("Save Experiment")
 
             if submitted and exp_title:
                 if add_entry({
@@ -492,13 +561,13 @@ with tab_lab:
                     "formula": equipment,
                     "description": description
                 }):
-                    st.success("Đã lưu bài thí nghiệm vào Supabase!")
+                    st.success("Experiment saved to Supabase!")
                     st.rerun()
 
-    search_lab = st.text_input("🔍 Tìm kiếm bài thí nghiệm...", key="search_lab")
+    search_lab = st.text_input("🔍 Search experiments...", key="search_lab")
 
     if not lab_data:
-        st.info("Chưa có bài thí nghiệm nào được lưu.")
+        st.info("No experiments recorded yet.")
     else:
         filtered_lab = [
             item for item in lab_data
@@ -506,7 +575,7 @@ with tab_lab:
         ]
 
         if not filtered_lab:
-            st.warning("Không tìm thấy bài thí nghiệm phù hợp.")
+            st.warning("No matching experiments found.")
         else:
             for item in filtered_lab:
                 with st.container(border=True):
@@ -514,15 +583,15 @@ with tab_lab:
                     with col1:
                         st.subheader(f"🧪 {item['title']}")
                         if item.get("formula"):
-                            st.caption(f"🛠️ Dụng cụ: {item['formula']}")
+                            st.caption(f"🛠️ Equipment: {item['formula']}")
                         if item.get("description"):
                             st.write(item["description"])
                     with col2:
                         with st.popover("✏️ Edit"):
                             with st.form(f"edit_lab_form_{item['id']}"):
-                                edit_title = st.text_input("Tên bài", value=item.get("title", ""))
-                                edit_equip = st.text_input("Dụng cụ", value=item.get("formula", ""))
-                                edit_desc = st.text_area("Nội dung & Kết quả", value=item.get("description", ""))
+                                edit_title = st.text_input("Title", value=item.get("title", ""))
+                                edit_equip = st.text_input("Equipment", value=item.get("formula", ""))
+                                edit_desc = st.text_area("Content & Results", value=item.get("description", ""))
                                 if st.form_submit_button("Save Changes"):
                                     if update_entry(item["id"], {
                                         "title": edit_title,
@@ -533,7 +602,7 @@ with tab_lab:
                                         st.rerun()
                     with col3:
                         with st.popover("🗑️ Delete"):
-                            st.write("Xác nhận xóa?")
-                            if st.button("Xóa ngay", key=f"del_lab_{item['id']}"):
+                            st.write("Confirm deletion?")
+                            if st.button("Delete Now", key=f"del_lab_{item['id']}"):
                                 if delete_entry(item["id"]):
                                     st.rerun()
