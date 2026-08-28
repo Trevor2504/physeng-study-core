@@ -1,608 +1,1063 @@
-import json
-import numpy as np
-import pandas as pd
 import streamlit as st
 import google.generativeai as genai
 from supabase import create_client, Client
+import pandas as pd
+import numpy as np
+import json
+import datetime
 
-# Page Configuration
+# ============================================================
+# 1. PAGE CONFIGURATION
+# ============================================================
 st.set_page_config(
-    page_title="PhysEng Study Core", page_icon="⚡", layout="wide"
+    page_title="OmniNote & AI Lab",
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
 
-# Configure Gemini API Key (Fallback to provided key if not in secrets)
-GEMINI_KEY = st.secrets.get("gemini", {}).get("API_KEY", "AQ.Ab8RN6JrbUigObdCPRd5LqfusjCLBOccO2B2q6D1SAhnw0vwHQ")
-try:
-    genai.configure(api_key=GEMINI_KEY)
-    gemini_model = genai.GenerativeModel("gemini-1.5-flash")
-except Exception as e:
-    gemini_model = None
+# ============================================================
+# 2. DARK LUXURY CUSTOM CSS
+# ============================================================
+CUSTOM_CSS = """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
-# Initialize Supabase Client
-@st.cache_resource
-def init_supabase() -> Client:
+:root {
+  --bg-main: #0E1117;
+  --bg-sidebar: #161922;
+  --bg-card: #1E222D;
+  --border-color: #2D323F;
+  --text-color: #E0E0E0;
+  --gold: #D4AF37;
+  --cyan: #00ADB5;
+  --muted: #9AA0AC;
+}
+
+html, body, [class*="css"] {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+}
+
+.stApp {
+  background-color: var(--bg-main);
+  color: var(--text-color);
+}
+
+[data-testid="stHeader"] {
+  background-color: transparent;
+}
+
+[data-testid="stToolbar"] {
+  right: 1rem;
+}
+
+.block-container {
+  padding-top: 2rem;
+  padding-bottom: 3rem;
+  max-width: 1300px;
+}
+
+[data-testid="stSidebar"] {
+  background-color: var(--bg-sidebar);
+  border-right: 1px solid var(--border-color);
+}
+
+[data-testid="stSidebar"] * {
+  color: var(--text-color);
+}
+
+[data-testid="stSidebar"] .stRadio > label {
+  color: var(--gold);
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+[data-testid="stSidebar"] .stRadio div[role="radiogroup"] label {
+  padding: 0.35rem 0.6rem;
+  border-radius: 8px;
+  margin-bottom: 0.1rem;
+  font-size: 0.92rem;
+}
+
+[data-testid="stSidebar"] .stRadio div[role="radiogroup"] label:hover {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+}
+
+h1, h2, h3, h4 {
+  color: var(--text-color) !important;
+  font-weight: 600;
+}
+
+h1 {
+  background: linear-gradient(90deg, var(--gold), var(--cyan));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  letter-spacing: 0.5px;
+}
+
+.stExpander {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color) !important;
+  border-radius: 10px !important;
+  margin-bottom: 0.6rem;
+  overflow: hidden;
+}
+
+[data-testid="stExpander"] summary {
+  font-weight: 500;
+}
+
+.stButton > button {
+  border-radius: 10px !important;
+  background-color: var(--bg-card);
+  color: var(--text-color);
+  border: 1px solid var(--border-color) !important;
+  transition: all 0.2s ease;
+}
+
+.stButton > button:hover {
+  border-color: var(--gold) !important;
+  color: var(--gold);
+  box-shadow: 0 0 10px rgba(212, 175, 55, 0.15);
+}
+
+.stTextInput input, .stTextArea textarea {
+  background-color: var(--bg-card) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: 10px !important;
+  color: var(--text-color) !important;
+}
+
+.stTextInput input:focus, .stTextArea textarea:focus {
+  border-color: var(--cyan) !important;
+}
+
+.stSelectbox div[data-baseweb="select"] > div {
+  background-color: var(--bg-card) !important;
+  border: 1px solid var(--border-color) !important;
+  border-radius: 10px !important;
+  color: var(--text-color) !important;
+}
+
+[data-testid="stForm"] {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 1.2rem 1.2rem 0.8rem 1.2rem;
+}
+
+[data-testid="stSlider"] > div > div > div {
+  color: var(--gold);
+}
+
+.stCaption, [data-testid="stCaptionContainer"] p {
+  color: var(--muted);
+}
+
+.sidebar-brand {
+  text-align: center;
+  padding: 0.8rem 0 0.2rem 0;
+}
+
+.brand-title {
+  font-size: 1.4rem;
+  font-weight: 700;
+  background: linear-gradient(90deg, var(--gold), var(--cyan));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.brand-subtitle {
+  font-size: 0.78rem;
+  color: var(--muted);
+  letter-spacing: 3px;
+  margin-top: 0.15rem;
+  text-transform: uppercase;
+}
+
+.divider-gold {
+  height: 2px;
+  background: linear-gradient(90deg, var(--gold), var(--cyan));
+  border-radius: 2px;
+  margin: 0.7rem 0 1rem 0;
+}
+
+.category-header {
+  border-left: 4px solid var(--gold);
+  padding-left: 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.category-header h2 {
+  margin-bottom: 0.1rem;
+}
+
+.ai-lab-card {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  padding: 1rem 1.2rem 1.2rem 1.2rem;
+  margin-bottom: 1.2rem;
+}
+
+.lab-title {
+  font-weight: 600;
+  font-size: 1.02rem;
+  margin-bottom: 0.3rem;
+}
+
+.badge {
+  display: inline-block;
+  padding: 0.2rem 0.8rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  border: 1px solid var(--gold);
+  color: var(--gold);
+  margin-bottom: 0.4rem;
+}
+
+.status-badge {
+  font-size: 0.78rem;
+  margin-top: 0.8rem;
+  padding: 0.5rem 0.9rem;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+  background-color: var(--bg-card);
+}
+
+.status-badge .status-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 0.4rem;
+}
+
+.status-dot-green { background-color: #4CAF50; }
+.status-dot-yellow { background-color: #FFC107; }
+.status-dot-grey { background-color: #6C757D; }
+
+#MainMenu {visibility: hidden;}
+footer {visibility: hidden;}
+</style>
+"""
+st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
+
+# ============================================================
+# 3. CATEGORY DEFINITIONS
+# ============================================================
+CATEGORIES = {
+    "vat_ly": {
+        "label": "⚛️ Vật Lý",
+        "icon": "⚛️",
+        "ai_lab": True,
+        "subtitle": "Công thức, định luật & Mô phỏng thí nghiệm AI",
+    },
+    "hoa_hoc": {
+        "label": "🧪 Hóa Học",
+        "icon": "🧪",
+        "ai_lab": True,
+        "subtitle": "Phản ứng, động học & Mô phỏng nhiệt độ AI",
+    },
+    "toan_hoc": {
+        "label": "📐 Toán Học",
+        "icon": "📐",
+        "ai_lab": False,
+        "subtitle": "Công thức, định lý & chứng minh LaTeX",
+    },
+    "cpp": {
+        "label": "💻 C++ & CS",
+        "icon": "💻",
+        "ai_lab": False,
+        "subtitle": "Code snippet, thuật toán & cấu trúc dữ liệu",
+    },
+    "ielts": {
+        "label": "📚 IELTS Vocabulary",
+        "icon": "📚",
+        "ai_lab": False,
+        "subtitle": "Bộ thẻ từ vựng & cụm từ học thuật",
+    },
+}
+
+# ============================================================
+# 4. SAMPLE DATA
+# ============================================================
+SAMPLE_NOTES = {
+    "vat_ly": [
+        {
+            "title": "Công thức chuyển động ném ngang",
+            "content": (
+                "- **Vận tốc phương ngang:** $v_x = v_0$ (không đổi)\n"
+                "- **Vận tốc phương thẳng đứng:** $v_y = g \\cdot t$\n"
+                "- **Tầm xa:** $L = v_0 \\cdot \\sqrt{\\frac{2h}{g}}$\n"
+                "- **Phương trình quỹ đạo:** $y = h - \\frac{g}{2v_0^2}x^2$\n\n"
+                "> 💡 Dùng **AI Experiment Lab** bên phải để mô phỏng quỹ đạo ném ngang với vận tốc ban đầu tùy chỉnh."
+            ),
+        },
+        {
+            "title": "Định luật II Newton",
+            "content": (
+                "$$\\vec{F} = m \\cdot \\vec{a}$$\n\n"
+                "- Lực tổng hợp tác dụng lên vật bằng tích khối lượng và gia tốc.\n"
+                "- Đơn vị: **Newton (N)** = kg·m/s².\n"
+                "- Áp dụng: **$$F = m \\cdot \\frac{\\Delta v}{\\Delta t}$$**"
+            ),
+        },
+    ],
+    "hoa_hoc": [
+        {
+            "title": "Tốc độ phản ứng bậc 1",
+            "content": (
+                "- Phương trình tốc độ: $v = k \\cdot [A]$\n"
+                "- Chu kỳ bán hủy: $t_{1/2} = \\frac{\\ln 2}{k}$\n"
+                "- Nồng độ theo thời gian: $[A]_t = [A]_0 \\cdot e^{-kt}$\n\n"
+                "> 🔬 Dùng **AI Experiment Lab** bên phải để mô phỏng sự suy giảm nồng độ theo nhiệt độ."
+            ),
+        },
+    ],
+    "toan_hoc": [
+        {
+            "title": "PTVP dao động điều hòa",
+            "content": (
+                "**Phương trình vi phân dao động điều hòa:**\n\n"
+                "$$x''(t) + \\omega^2 x(t) = 0$$\n\n"
+                "**Nghiệm tổng quát:**\n\n"
+                "$$x(t) = A\\cos(\\omega t + \\varphi)$$\n\n"
+                "- $A$: biên độ dao động\n"
+                "- $\\omega$: tần số góc (rad/s)\n"
+                "- $\\varphi$: pha ban đầu"
+            ),
+            "extra": {
+                "formula": r"x''(t) + \omega^2 x(t) = 0 \Rightarrow x(t) = A\cos(\omega t + \varphi)"
+            },
+        },
+    ],
+    "cpp": [
+        {
+            "title": "Đọc cảm biến nhiệt độ LM35",
+            "content": (
+                "Đọc giá trị analog từ cảm biến LM35, chuyển đổi sang độ Celsius "
+                "và in ra Serial Monitor mỗi giây."
+            ),
+            "extra": {
+                "language": "cpp",
+                "tags": "Arduino, Sensor, AnalogRead",
+                "code": (
+                    "const int sensorPin = A0;\n"
+                    "void setup() {\n"
+                    "  Serial.begin(9600);\n"
+                    "}\n"
+                    "void loop() {\n"
+                    "  int reading = analogRead(sensorPin);\n"
+                    "  float voltage = reading * (5.0 / 1023.0);\n"
+                    "  float celsius = voltage * 100.0;\n"
+                    "  Serial.print(\"Nhiet do: \");\n"
+                    "  Serial.print(celsius);\n"
+                    "  Serial.println(\" *C\");\n"
+                    "  delay(1000);\n"
+                    "}"
+                ),
+            },
+        },
+    ],
+    "ielts": [
+        {
+            "title": "Perseverance",
+            "content": (
+                "Từ vựng học thuật mô tả phẩm chất kiên trì — thường xuất hiện trong "
+                "chủ đề Education & Success của IELTS Writing Task 2."
+            ),
+            "extra": {
+                "type": "noun",
+                "definition": "Sự kiên trì, bền bỉ theo đuổi mục tiêu dù gặp khó khăn.",
+                "example": "It takes perseverance to master a new language.",
+            },
+        },
+    ],
+}
+
+# ============================================================
+# 5. SESSION STATE INITIALIZATION & FALLBACK DATABASE SYSTEM
+# ============================================================
+def _generate_id():
+    now = datetime.datetime.now()
+    return f"note_{now.strftime('%Y%m%d%H%M%S%f')}_{np.random.randint(1000, 9999)}"
+
+
+def _get_supabase_config():
     try:
-        url = st.secrets["supabase"]["SUPABASE_URL"]
-        key = st.secrets["supabase"]["SUPABASE_KEY"]
-        return create_client(url, key)
-    except Exception as e:
-        st.error("Supabase Secrets not configured in .streamlit/secrets.toml!")
-        st.stop()
+        config = st.secrets.get("supabase", {})
+        return dict(config)
+    except Exception:
+        return {}
 
-supabase = init_supabase()
 
-# Helper Functions for Supabase Operations
-def fetch_entries(category: str):
+def _get_gemini_config():
     try:
-        res = supabase.table("knowledge_base").select("*").eq("category", category).order("id", desc=True).execute()
-        return res.data or []
-    except Exception as e:
-        st.error(f"Error fetching data ({category}): {e}")
-        return []
+        gemini_key = st.secrets.get("gemini", {}).get("api_key", "")
+        google_key = st.secrets.get("google", {}).get("api_key", "")
+        root_key = st.secrets.get("GEMINI_API_KEY", "")
+        return gemini_key or google_key or root_key
+    except Exception:
+        return ""
 
-def add_entry(payload: dict):
-    try:
-        supabase.table("knowledge_base").insert(payload).execute()
-        return True
-    except Exception as e:
-        st.error(f"Error adding entry: {e}")
-        return False
 
-def delete_entry(item_id: int):
-    try:
-        supabase.table("knowledge_base").delete().eq("id", item_id).execute()
-        return True
-    except Exception as e:
-        st.error(f"Error deleting entry: {e}")
-        return False
+def init_session_state():
+    if "notes" not in st.session_state:
+        local_notes = {key: [] for key in CATEGORIES.keys()}
+        for cat_key, note_list in SAMPLE_NOTES.items():
+            for sample in note_list:
+                local_notes[cat_key].append(
+                    {
+                        "id": _generate_id(),
+                        "category": cat_key,
+                        "title": sample["title"],
+                        "content": sample["content"],
+                        "created_at": datetime.datetime.now().isoformat(),
+                        "extra": sample.get("extra", {}),
+                    }
+                )
+        st.session_state.notes = local_notes
 
-def update_entry(item_id: int, payload: dict):
-    try:
-        supabase.table("knowledge_base").update(payload).eq("id", item_id).execute()
-        return True
-    except Exception as e:
-        st.error(f"Error updating entry: {e}")
-        return False
-
-# Fetch data for all categories
-physics_data = fetch_entries("physics")
-math_data = fetch_entries("math")
-cpp_data = fetch_entries("cpp")
-ielts_data = fetch_entries("ielts")
-lab_data = fetch_entries("lab")
-
-# ==========================================
-# SIDEBAR: STATS & DATA MANAGEMENT
-# ==========================================
-with st.sidebar:
-    st.header("📊 Supabase Statistics")
-    
-    col_s1, col_s2 = st.columns(2)
-    with col_s1:
-        st.metric("Physics", len(physics_data))
-        st.metric("C++ Code", len(cpp_data))
-        st.metric("Experiments", len(lab_data))
-    with col_s2:
-        st.metric("Math", len(math_data))
-        st.metric("IELTS Words", len(ielts_data))
-    
-    st.divider()
-    st.subheader("💾 Data Management")
-    
-    # Export current database to JSON format
-    all_data = {
-        "physics": physics_data,
-        "math": math_data,
-        "cpp": cpp_data,
-        "ielts": ielts_data,
-        "lab": lab_data,
-    }
-    st.download_button(
-        label="📥 Export JSON Backup",
-        data=json.dumps(all_data, ensure_ascii=False, indent=4),
-        file_name="knowledge_backup.json",
-        mime="application/json",
-        use_container_width=True
-    )
-
-    # Import JSON Backup
-    uploaded_file = st.file_uploader("📤 Import JSON Backup (Restore)", type=["json"], key="json_uploader")
-    if uploaded_file is not None:
-        if st.button("🔄 Perform Restore", use_container_width=True):
+    if "supabase_available" not in st.session_state:
+        supabase_config = _get_supabase_config()
+        is_ready = bool(supabase_config.get("url") and supabase_config.get("key"))
+        st.session_state.supabase_available = False
+        st.session_state.supabase_client = None
+        if is_ready:
             try:
-                imported_json = json.load(uploaded_file)
-                count = 0
-                for cat, items in imported_json.items():
-                    for entry in items:
-                        clean_payload = {k: v for k, v in entry.items() if k not in ["id", "created_at"]}
-                        if add_entry(clean_payload):
-                            count += 1
-                st.success(f"Successfully restored {count} entries!")
-                st.rerun()
-            except Exception as err:
-                st.error(f"Invalid JSON file: {err}")
+                client: Client = create_client(
+                    supabase_config["url"], supabase_config["key"]
+                )
+                st.session_state.supabase_client = client
+                st.session_state.supabase_available = True
+            except Exception:
+                st.session_state.supabase_client = None
+                st.session_state.supabase_available = False
 
-# App Header
-st.title("⚡ PhysEng Study Core v3.0")
-st.caption("Personal Knowledge Hub for Physics, Mathematics, C++ Engineering, IELTS Preparation, and AI Experiments")
-st.divider()
+    if "gemini_available" not in st.session_state:
+        gemini_key = _get_gemini_config()
+        st.session_state.gemini_available = bool(gemini_key)
+        st.session_state.gemini_api_key = gemini_key
 
-# Tabs
-tab_physics, tab_math, tab_cpp, tab_ielts, tab_lab = st.tabs(
-    [
-        "📐 Physics & Chemistry",
-        "🧮 Mathematics",
-        "💻 C++ Code Snippets",
-        "🇬🇧 IELTS Vocabulary",
-        "🧪 Physics Experiments & AI",
-    ]
-)
 
-# ==========================================
-# TAB 1: PHYSICS & CHEMISTRY
-# ==========================================
-with tab_physics:
-    st.header("Physics & Chemistry Knowledge Base")
+init_session_state()
 
-    with st.expander("➕ Add New Formula / Concept"):
-        with st.form("physics_form", clear_on_submit=True):
-            topic = st.text_input("Topic / Title", placeholder="e.g., Work Done")
-            formula = st.text_input("LaTeX Formula (optional)", placeholder=r"e.g., W = F \cdot s \cdot \cos(\alpha)")
-            description = st.text_area("Description / Notes", placeholder="Explain variables and meaning...")
-            submitted = st.form_submit_button("Save Entry")
+# ============================================================
+# 6. CRUD FUNCTIONS (Supabase-first, Local Session fallback)
+# ============================================================
+def _normalize_note(row):
+    extra = {}
+    raw_extra = row.get("meta") or row.get("extra")
+    if raw_extra:
+        try:
+            if isinstance(raw_extra, str):
+                extra = json.loads(raw_extra)
+            else:
+                extra = raw_extra
+        except Exception:
+            extra = {}
+    normalized = dict(row)
+    normalized["extra"] = extra
+    return normalized
 
-            if submitted and topic:
-                if add_entry({
-                    "category": "physics",
-                    "title": topic,
-                    "formula": formula,
-                    "description": description
-                }):
-                    st.success("Successfully saved to Supabase!")
-                    st.rerun()
 
-    search_phys = st.text_input("🔍 Search Physics entries...", key="search_phys")
+def get_notes(category_key):
+    if st.session_state.supabase_available and st.session_state.supabase_client:
+        try:
+            response = (
+                st.session_state.supabase_client.table("notes")
+                .select("*")
+                .eq("category", category_key)
+                .order("created_at")
+                .execute()
+            )
+            if response and response.data:
+                return [_normalize_note(row) for row in response.data]
+            return []
+        except Exception:
+            return st.session_state.notes.get(category_key, [])
+    return st.session_state.notes.get(category_key, [])
 
-    if not physics_data:
-        st.info("No formulas added yet. Use the form above to add your first entry!")
-    else:
-        filtered = [
-            item for item in physics_data
-            if not search_phys or search_phys.lower() in item["title"].lower() or search_phys.lower() in (item.get("description") or "").lower()
-        ]
-        
-        if not filtered:
-            st.warning("No matching entries found.")
-        else:
-            for item in filtered:
-                with st.container(border=True):
-                    col1, col2, col3 = st.columns([0.74, 0.13, 0.13])
-                    with col1:
-                        st.subheader(item["title"])
-                        if item.get("formula"):
-                            clean_formula = item["formula"].strip("$ ")
-                            if clean_formula:
-                                st.latex(clean_formula)
-                        if item.get("description"):
-                            st.write(item["description"])
-                    with col2:
-                        with st.popover("✏️ Edit"):
-                            with st.form(f"edit_phys_form_{item['id']}"):
-                                edit_title = st.text_input("Title", value=item.get("title", ""))
-                                edit_formula = st.text_input("Formula (LaTeX)", value=item.get("formula", ""))
-                                edit_desc = st.text_area("Description", value=item.get("description", ""))
-                                if st.form_submit_button("Save Changes"):
-                                    if update_entry(item["id"], {
-                                        "title": edit_title,
-                                        "formula": edit_formula,
-                                        "description": edit_desc
-                                    }):
-                                        st.success("Updated!")
-                                        st.rerun()
-                    with col3:
-                        with st.popover("🗑️ Delete"):
-                            st.write("Confirm deletion?")
-                            if st.button("Delete Now", key=f"del_phys_{item['id']}"):
-                                if delete_entry(item["id"]):
-                                    st.rerun()
 
-# ==========================================
-# TAB 2: MATHEMATICS
-# ==========================================
-with tab_math:
-    st.header("Mathematics Knowledge Base")
-
-    with st.expander("➕ Add New Math Formula / Theorem"):
-        with st.form("math_form", clear_on_submit=True):
-            topic = st.text_input("Topic / Title", placeholder="e.g., Differential Equation of Motion")
-            formula = st.text_input("LaTeX Formula", placeholder=r"e.g., \frac{d^2x}{dt^2} + \omega^2 x = 0")
-            description = st.text_area("Description / Notes", placeholder="Explain concept, proof steps...")
-            submitted = st.form_submit_button("Save Entry")
-
-            if submitted and topic:
-                if add_entry({
-                    "category": "math",
-                    "title": topic,
-                    "formula": formula,
-                    "description": description
-                }):
-                    st.success("Successfully saved to Supabase!")
-                    st.rerun()
-
-    search_math = st.text_input("🔍 Search Math entries...", key="search_math")
-
-    if not math_data:
-        st.info("No math formulas added yet.")
-    else:
-        filtered = [
-            item for item in math_data
-            if not search_math or search_math.lower() in item["title"].lower() or search_math.lower() in (item.get("description") or "").lower()
-        ]
-
-        if not filtered:
-            st.warning("No matching entries found.")
-        else:
-            for item in filtered:
-                with st.container(border=True):
-                    col1, col2, col3 = st.columns([0.74, 0.13, 0.13])
-                    with col1:
-                        st.subheader(item["title"])
-                        if item.get("formula"):
-                            clean_formula = item["formula"].strip("$ ")
-                            if clean_formula:
-                                st.latex(clean_formula)
-                        if item.get("description"):
-                            st.write(item["description"])
-                    with col2:
-                        with st.popover("✏️ Edit"):
-                            with st.form(f"edit_math_form_{item['id']}"):
-                                edit_title = st.text_input("Title", value=item.get("title", ""))
-                                edit_formula = st.text_input("Formula (LaTeX)", value=item.get("formula", ""))
-                                edit_desc = st.text_area("Description", value=item.get("description", ""))
-                                if st.form_submit_button("Save Changes"):
-                                    if update_entry(item["id"], {
-                                        "title": edit_title,
-                                        "formula": edit_formula,
-                                        "description": edit_desc
-                                    }):
-                                        st.success("Updated!")
-                                        st.rerun()
-                    with col3:
-                        with st.popover("🗑️ Delete"):
-                            st.write("Confirm deletion?")
-                            if st.button("Delete Now", key=f"del_math_{item['id']}"):
-                                if delete_entry(item["id"]):
-                                    st.rerun()
-
-# ==========================================
-# TAB 3: C++ CODE SNIPPETS
-# ==========================================
-with tab_cpp:
-    st.header("C++ Code Snippets")
-
-    with st.expander("➕ Add New C++ Snippet"):
-        with st.form("cpp_form", clear_on_submit=True):
-            title = st.text_input("Snippet Title", placeholder="e.g., Read Sensor Data")
-            code = st.text_area("C++ Code", placeholder="void setup() {\n  ...\n}", height=150)
-            note = st.text_input("Notes / Hardware Pin", placeholder="e.g., Pin 13 LED")
-            submitted = st.form_submit_button("Save Code")
-
-            if submitted and title and code:
-                if add_entry({
-                    "category": "cpp",
+def add_note(category_key, title, content, extra=None):
+    extra = extra or {}
+    note_id = _generate_id()
+    created_at = datetime.datetime.now().isoformat()
+    if st.session_state.supabase_available and st.session_state.supabase_client:
+        try:
+            st.session_state.supabase_client.table("notes").insert(
+                {
+                    "id": note_id,
+                    "category": category_key,
                     "title": title,
-                    "code": code,
-                    "note": note
-                }):
-                    st.success("Successfully saved C++ snippet!")
-                    st.rerun()
-
-    search_cpp = st.text_input("🔍 Search C++ snippets...", key="search_cpp")
-
-    if not cpp_data:
-        st.info("No C++ snippets added yet.")
-    else:
-        filtered = [
-            item for item in cpp_data
-            if not search_cpp or search_cpp.lower() in item["title"].lower() or search_cpp.lower() in (item.get("code") or "").lower() or search_cpp.lower() in (item.get("note") or "").lower()
-        ]
-
-        if not filtered:
-            st.warning("No matching snippets found.")
-        else:
-            for item in filtered:
-                with st.container(border=True):
-                    col1, col2, col3 = st.columns([0.74, 0.13, 0.13])
-                    with col1:
-                        st.subheader(item["title"])
-                        if item.get("note"):
-                            st.caption(f"📌 {item['note']}")
-                        if item.get("code"):
-                            st.code(item["code"], language="cpp")
-                    with col2:
-                        with st.popover("✏️ Edit"):
-                            with st.form(f"edit_cpp_form_{item['id']}"):
-                                edit_title = st.text_input("Title", value=item.get("title", ""))
-                                edit_note = st.text_input("Note", value=item.get("note", ""))
-                                edit_code = st.text_area("C++ Code", value=item.get("code", ""), height=150)
-                                if st.form_submit_button("Save Changes"):
-                                    if update_entry(item["id"], {
-                                        "title": edit_title,
-                                        "note": edit_note,
-                                        "code": edit_code
-                                    }):
-                                        st.success("Updated!")
-                                        st.rerun()
-                    with col3:
-                        with st.popover("🗑️ Delete"):
-                            st.write("Confirm deletion?")
-                            if st.button("Delete Now", key=f"del_cpp_{item['id']}"):
-                                if delete_entry(item["id"]):
-                                    st.rerun()
-
-# ==========================================
-# TAB 4: IELTS VOCABULARY
-# ==========================================
-with tab_ielts:
-    st.header("IELTS Vocabulary & Phrases")
-
-    with st.expander("➕ Add New Word / Phrase"):
-        with st.form("ielts_form", clear_on_submit=True):
-            word = st.text_input("Word / Phrase", placeholder="e.g., Perseverance")
-            word_type = st.selectbox("Type", ["noun", "verb", "adjective", "adverb", "phrase", "idiom"])
-            definition = st.text_input("Definition", placeholder="e.g., Continued effort to achieve something")
-            example = st.text_input("Example Sentence", placeholder="e.g., It takes perseverance to learn C++.")
-            submitted = st.form_submit_button("Save Word")
-
-            if submitted and word:
-                if add_entry({
-                    "category": "ielts",
-                    "title": word,
-                    "word_type": word_type,
-                    "definition": definition,
-                    "example": example
-                }):
-                    st.success("Successfully saved word!")
-                    st.rerun()
-
-    search_ielts = st.text_input("🔍 Search Vocabulary...", key="search_ielts")
-
-    if not ielts_data:
-        st.info("No words added yet.")
-    else:
-        filtered = [
-            item for item in ielts_data
-            if not search_ielts or search_ielts.lower() in item["title"].lower() or search_ielts.lower() in (item.get("definition") or "").lower()
-        ]
-
-        if not filtered:
-            st.warning("No matching words found.")
-        else:
-            for item in filtered:
-                with st.container(border=True):
-                    col1, col2, col3 = st.columns([0.74, 0.13, 0.13])
-                    with col1:
-                        st.markdown(f"### **{item['title']}** *({item.get('word_type', 'N/A')})*")
-                        if item.get("definition"):
-                            st.write(f"**Meaning:** {item['definition']}")
-                        if item.get("example"):
-                            st.write(f"*Example:* {item['example']}")
-                    with col2:
-                        with st.popover("✏️ Edit"):
-                            with st.form(f"edit_ielts_form_{item['id']}"):
-                                edit_word = st.text_input("Word / Phrase", value=item.get("title", ""))
-                                type_options = ["noun", "verb", "adjective", "adverb", "phrase", "idiom"]
-                                current_type = item.get("word_type", "noun")
-                                default_idx = type_options.index(current_type) if current_type in type_options else 0
-                                edit_type = st.selectbox("Type", type_options, index=default_idx)
-                                edit_def = st.text_input("Definition", value=item.get("definition", ""))
-                                edit_ex = st.text_input("Example", value=item.get("example", ""))
-                                if st.form_submit_button("Save Changes"):
-                                    if update_entry(item["id"], {
-                                        "title": edit_word,
-                                        "word_type": edit_type,
-                                        "definition": edit_def,
-                                        "example": edit_ex
-                                    }):
-                                        st.success("Updated!")
-                                        st.rerun()
-                    with col3:
-                        with st.popover("🗑️ Delete"):
-                            st.write("Confirm deletion?")
-                            if st.button("Delete Now", key=f"del_ielts_{item['id']}"):
-                                if delete_entry(item["id"]):
-                                    st.rerun()
-
-# ==========================================
-# TAB 5: PHYSICS EXPERIMENTS & AI
-# ==========================================
-with tab_lab:
-    st.header("🧪 Physics Lab, Simulations & AI Generator")
-
-    # SECTION 1: INTERACTIVE SIMULATION
-    st.subheader("1. 🎮 Interactive Simulator: 1D Collision & Momentum Conservation")
-    st.caption("Interactive experiment to verify Momentum ($p = mv$) and Kinetic Energy ($E_k = \\frac{1}{2}mv^2$) before and after collision.")
-
-    sim_col1, sim_col2 = st.columns(2)
-
-    with sim_col1:
-        st.markdown("**Object 1 ($m_1$)**")
-        m1 = st.slider("Mass m1 (kg)", 0.5, 10.0, 2.0, 0.5)
-        v1 = st.slider("Initial Velocity v1 (m/s)", -10.0, 10.0, 5.0, 0.5)
-
-    with sim_col2:
-        st.markdown("**Object 2 ($m_2$)**")
-        m2 = st.slider("Mass m2 (kg)", 0.5, 10.0, 3.0, 0.5)
-        v2 = st.slider("Initial Velocity v2 (m/s)", -10.0, 10.0, -2.0, 0.5)
-
-    col_type, _ = st.columns([0.5, 0.5])
-    with col_type:
-        collision_type = st.radio("Collision Type", ["Elastic Collision", "Inelastic Collision"], horizontal=True)
-
-    # Physics calculations
-    p_initial = m1 * v1 + m2 * v2
-    ek_initial = 0.5 * m1 * (v1 ** 2) + 0.5 * m2 * (v2 ** 2)
-
-    if "elastic" in collision_type.lower():
-        v1_final = ((m1 - m2) * v1 + 2 * m2 * v2) / (m1 + m2)
-        v2_final = ((m2 - m1) * v2 + 2 * m1 * v1) / (m1 + m2)
-    else:  # Perfectly Inelastic
-        v_common = p_initial / (m1 + m2)
-        v1_final = v_common
-        v2_final = v_common
-
-    p_final = m1 * v1_final + m2 * v2_final
-    ek_final = 0.5 * m1 * (v1_final ** 2) + 0.5 * m2 * (v2_final ** 2)
-
-    # Simulation results metrics
-    m_col1, m_col2, m_col3, m_col4 = st.columns(4)
-    m_col1.metric("Final Velocity v1'", f"{v1_final:.2f} m/s")
-    m_col2.metric("Final Velocity v2'", f"{v2_final:.2f} m/s")
-    m_col3.metric("Momentum (Initial / Final)", f"{p_initial:.2f} / {p_final:.2f}", delta=f"{p_final - p_initial:.2f}")
-    m_col4.metric("Kinetic Energy (Initial / Final)", f"{ek_initial:.2f} / {ek_final:.2f} J", delta=f"{ek_final - ek_initial:.2f} J")
-
-    # Plot trajectories x(t)
-    t_collision = 2.0
-    time_before = np.linspace(0, t_collision, 20)
-    time_after = np.linspace(t_collision, 5.0, 30)
-
-    x1_0, x2_0 = 0.0, 10.0
-    x1_before = x1_0 + v1 * time_before
-    x2_before = x2_0 + v2 * time_before
-
-    x_collision = x1_before[-1]
-    x1_after = x_collision + v1_final * (time_after - t_collision)
-    x2_after = x_collision + v2_final * (time_after - t_collision)
-
-    df_sim = pd.DataFrame({
-        "Time (s)": np.concatenate([time_before, time_after]),
-        "Position Object 1 (m)": np.concatenate([x1_before, x1_after]),
-        "Position Object 2 (m)": np.concatenate([x2_before, x2_after])
-    }).set_index("Time (s)")
-
-    st.line_chart(df_sim)
-
-    st.divider()
-
-    # SECTION 2: AI EXPERIMENT GENERATOR (NEW)
-    st.subheader("2. 🤖 AI Experiment Generator (Gemini Powered)")
-    st.caption("Enter any topic or concept, and AI will automatically draft a structured lab experiment setup for you.")
-
-    ai_prompt = st.text_input(
-        "💡 What experiment would you like to design?",
-        placeholder="e.g., Conservation of Mechanical Energy, Measuring Planck's Constant, RLC Circuits..."
-    )
-
-    if st.button("✨ Generate Experiment with AI", use_container_width=True):
-        if not ai_prompt:
-            st.warning("Please enter an experiment topic!")
-        elif not gemini_model:
-            st.error("Gemini API is not configured properly.")
-        else:
-            with st.spinner("AI is designing the experiment setup..."):
-                prompt_template = f"""
-                You are an expert Physics Professor and Experimentalist. Design a complete lab experiment for the topic: "{ai_prompt}".
-                Return ONLY a valid JSON object matching this schema:
-                {{
-                  "title": "Experiment Title",
-                  "equipment": "List of required apparatus and tools",
-                  "theory": "Theoretical foundation and key equations (LaTeX format where applicable)",
-                  "procedure": "Step-by-step procedure, data collection, and error analysis guidance"
-                }}
-                """
-                try:
-                    response = gemini_model.generate_content(
-                        prompt_template,
-                        generation_config={"response_mime_type": "application/json"}
-                    )
-                    exp_data = json.loads(response.text)
-                    st.session_state["last_ai_exp"] = exp_data
-                    st.success("Experiment generated successfully!")
-                except Exception as e:
-                    st.error(f"Error generating experiment with AI: {e}")
-
-    # Display generated AI experiment if available
-    if "last_ai_exp" in st.session_state:
-        exp_data = st.session_state["last_ai_exp"]
-        with st.container(border=True):
-            st.markdown(f"### 🧪 {exp_data.get('title')}")
-            st.markdown(f"**🛠️ Equipment:** {exp_data.get('equipment')}")
-            st.markdown(f"**📐 Theory & Formulas:**\n{exp_data.get('theory')}")
-            st.markdown(f"**📝 Procedure & Analysis:**\n{exp_data.get('procedure')}")
-
-            if st.button("💾 Save Generated Experiment to Supabase Log", use_container_width=True):
-                payload = {
-                    "category": "lab",
-                    "title": exp_data.get("title", "AI Experiment"),
-                    "formula": exp_data.get("equipment", ""),
-                    "description": f"THEORY:\n{exp_data.get('theory')}\n\nPROCEDURE:\n{exp_data.get('procedure')}"
+                    "content": content,
+                    "created_at": created_at,
+                    "meta": json.dumps(extra, ensure_ascii=False),
                 }
-                if add_entry(payload):
-                    st.success("Saved to Supabase database!")
-                    del st.session_state["last_ai_exp"]
-                    st.rerun()
+            ).execute()
+            return True
+        except Exception:
+            pass
+    st.session_state.notes.setdefault(category_key, []).append(
+        {
+            "id": note_id,
+            "category": category_key,
+            "title": title,
+            "content": content,
+            "created_at": created_at,
+            "extra": extra,
+        }
+    )
+    return True
 
-    st.divider()
 
-    # SECTION 3: LAB EXPERIMENT LOG (SUPABASE CRUD)
-    st.subheader("3. 📝 Lab Experiment Log & History (Supabase)")
+def delete_note(category_key, note_id):
+    if st.session_state.supabase_available and st.session_state.supabase_client:
+        try:
+            (
+                st.session_state.supabase_client.table("notes")
+                .delete()
+                .eq("id", note_id)
+                .execute()
+            )
+            return True
+        except Exception:
+            pass
+    st.session_state.notes.setdefault(category_key, [])
+    st.session_state.notes[category_key] = [
+        note
+        for note in st.session_state.notes[category_key]
+        if note.get("id") != note_id
+    ]
+    return True
 
-    with st.expander("➕ Add New Manual Experiment Entry"):
-        with st.form("lab_form", clear_on_submit=True):
-            exp_title = st.text_input("Experiment Title", placeholder="e.g., Verifying Conservation of Linear Momentum")
-            equipment = st.text_input("Equipment & Tools", placeholder="e.g., Air track, photogates, gliders")
-            description = st.text_area("Description, Procedure & Conclusion", placeholder="Record observations, calculations, error analysis...")
-            submitted = st.form_submit_button("Save Experiment")
 
-            if submitted and exp_title:
-                if add_entry({
-                    "category": "lab",
-                    "title": exp_title,
-                    "formula": equipment,
-                    "description": description
-                }):
-                    st.success("Experiment saved to Supabase!")
-                    st.rerun()
+def count_notes(category_key):
+    try:
+        return len(get_notes(category_key))
+    except Exception:
+        return 0
 
-    search_lab = st.text_input("🔍 Search experiments...", key="search_lab")
-
-    if not lab_data:
-        st.info("No experiments recorded yet.")
-    else:
-        filtered_lab = [
-            item for item in lab_data
-            if not search_lab or search_lab.lower() in item["title"].lower() or search_lab.lower() in (item.get("description") or "").lower()
+# ============================================================
+# 7. AI SIMULATION ENGINE (Gemini + Fallback Generator)
+# ============================================================
+def detect_simulation_type(query):
+    q = query.lower()
+    if any(
+        keyword in q
+        for keyword in [
+            "ném ngang",
+            "parabol",
+            "projectile",
+            "parabola",
+            "quỹ đạo",
+            "quy dao",
+            "trajectory",
         ]
+    ):
+        return "parabola"
+    if any(
+        keyword in q
+        for keyword in [
+            "phản ứng",
+            "phan ung",
+            "reaction",
+            "mũ",
+            "mu",
+            "exponential",
+            "tăng trưởng",
+            "tang truong",
+            "phân rã",
+            "phan ra",
+            "decay",
+            "nồng độ",
+            "nong do",
+        ]
+    ):
+        return "exponential"
+    return "sine"
 
-        if not filtered_lab:
-            st.warning("No matching experiments found.")
+
+def fallback_simulation(query):
+    sim_type = detect_simulation_type(query)
+    x = np.linspace(0, 10, 80)
+    if sim_type == "parabola":
+        y = -0.5 * (x - 5.0) ** 2 + 8.0
+        label = "Quỹ đạo Parabol (Ném ngang)"
+    elif sim_type == "exponential":
+        y = 2.0 * np.exp(0.3 * x)
+        label = "Hàm mũ — Tốc độ phản ứng / Tăng trưởng"
+    else:
+        y = 2.0 * np.sin(x)
+        label = "Sóng Sine — Dao động điều hòa"
+    df = pd.DataFrame({"x": x, "y": y})
+    return df, label, sim_type
+
+
+def run_gemini_simulation(query):
+    api_key = st.session_state.get("gemini_api_key", "")
+    if not api_key:
+        raise RuntimeError("Gemini API key is missing.")
+    genai.configure(api_key=api_key)
+    prompt = (
+        "Bạn là chuyên gia mô phỏng vật lý / hóa học. "
+        f'Dựa trên câu hỏi: "{query}". '
+        "Hãy tạo dữ liệu mô phỏng cho đồ thị. "
+        "Trả về DUY NHẤT một JSON hợp lệ (không markdown, không giải thích thêm) với cấu trúc: "
+        '{"label": "Tên đồ thị ngắn gọn", "sim_type": "sine" | "parabola" | "exponential", '
+        '"x": [25 đến 45 số thực tăng dần], "y": [25 đến 45 số thực tương ứng]}.'
+    )
+    last_error = None
+    for model_name in ["gemini-2.0-flash", "gemini-1.5-flash"]:
+        try:
+            model = genai.GenerativeModel(model_name)
+            response = model.generate_content(prompt)
+            raw_text = response.text.strip()
+            if raw_text.startswith("```"):
+                raw_text = raw_text.split("```")[1]
+                if raw_text.startswith("json"):
+                    raw_text = raw_text[4:]
+                raw_text = raw_text.strip()
+            payload = json.loads(raw_text)
+            x_vals = payload["x"]
+            y_vals = payload["y"]
+            label = payload.get("label", "Mô phỏng từ Gemini AI")
+            sim_type = payload.get("sim_type", "sine")
+            if not x_vals or not y_vals or len(x_vals) != len(y_vals):
+                raise ValueError("Invalid simulation payload from Gemini.")
+            df = pd.DataFrame({"x": x_vals, "y": y_vals})
+            return df, label, sim_type
+        except Exception as exc:
+            last_error = exc
+            continue
+    raise RuntimeError(str(last_error))
+
+
+def apply_simulation_parameters(x, base_y, sim_type, amplitude, frequency, phase, baseline):
+    x = np.asarray(x, dtype=float)
+    base_y = np.asarray(base_y, dtype=float)
+    center = float(np.mean(x)) if len(x) else 5.0
+    offset = float(np.max(base_y)) if len(base_y) else 0.0
+    frequency = max(frequency, 0.2)
+    if sim_type == "parabola":
+        y = offset + baseline - amplitude * (((x - center) / frequency) ** 2)
+    elif sim_type == "exponential":
+        y = amplitude * base_y + baseline
+    else:
+        y = offset + baseline + amplitude * np.sin(frequency * x + phase)
+    return y
+
+# ============================================================
+# 8. NOTE RENDER FUNCTIONS
+# ============================================================
+def render_note_card(note, category_key):
+    note_id = note.get("id", "")
+    title = note.get("title", "Chưa có tiêu đề")
+    content = note.get("content", "")
+    extra = note.get("extra", {})
+    created_raw = note.get("created_at", "")
+    try:
+        created = (
+            datetime.datetime.fromisoformat(created_raw).strftime("%d/%m/%Y %H:%M")
+            if created_raw
+            else "Không rõ"
+        )
+    except Exception:
+        created = created_raw
+    with st.expander(f"📌 {title}", expanded=False):
+        st.caption(f"🕒 {created}")
+        if category_key == "ielts":
+            word_type = extra.get("type", "")
+            definition = extra.get("definition", "")
+            example = extra.get("example", "")
+            if word_type:
+                st.caption(f"🏷️ {word_type}")
+            if definition:
+                st.write(f"**Nghĩa:** {definition}")
+            if example:
+                st.write(f"*Ví dụ:* {example}")
+        if category_key == "cpp":
+            code = extra.get("code", "")
+            language = extra.get("language", "cpp")
+            tags = extra.get("tags", "")
+            if tags:
+                st.caption(f"🏷️ {tags}")
+            if code:
+                try:
+                    st.code(code, language=language)
+                except Exception:
+                    st.code(code, language=None)
+        if category_key == "toan_hoc":
+            formula = extra.get("formula", "")
+            if formula:
+                try:
+                    st.latex(formula)
+                except Exception:
+                    st.markdown(formula)
+        if content:
+            st.markdown(content)
+        if st.button("🗑️ Xóa Note", key=f"note_del_{category_key}_{note_id}"):
+            delete_note(category_key, note_id)
+            st.rerun()
+
+
+def render_note_viewer(category_key):
+    notes = get_notes(category_key)
+    st.markdown('<div class="ai-lab-card">', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="lab-title" style="color: var(--cyan);">🗂️ Note Viewer — Thư viện Ghi Chú</div>',
+        unsafe_allow_html=True,
+    )
+    search_query = st.text_input(
+        "🔍 Tìm kiếm ghi chú...",
+        key=f"note_search_{category_key}",
+        placeholder="Nhập từ khóa để lọc theo tiêu đề hoặc nội dung...",
+    )
+    if search_query:
+        try:
+            filtered = [
+                note
+                for note in notes
+                if search_query.lower() in note.get("title", "").lower()
+                or search_query.lower() in note.get("content", "").lower()
+            ]
+        except Exception:
+            filtered = notes
+    else:
+        filtered = notes
+    if not notes:
+        st.info("📭 Chưa có ghi chú nào trong danh mục này.")
+    else:
+        st.caption(f"📊 Hiển thị {len(filtered)} / {len(notes)} ghi chú")
+        if not filtered:
+            st.warning("Không tìm thấy ghi chú phù hợp với từ khóa tìm kiếm.")
+        for note in filtered:
+            try:
+                render_note_card(note, category_key)
+            except Exception:
+                continue
+    st.markdown('</div>', unsafe_allow_html=True)
+
+
+def render_note_editor(category_key):
+    st.markdown('<div class="ai-lab-card">', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="lab-title" style="color: var(--gold);">📝 Note Editor — Tạo Ghi Chú Mới</div>',
+        unsafe_allow_html=True,
+    )
+    st.caption("Nội dung hỗ trợ **Markdown** và **LaTeX** (viết công thức trong `$...$` hoặc `$$...$$`).")
+    with st.form(f"note_form_{category_key}", clear_on_submit=True):
+        note_title = st.text_input(
+            "📌 Tiêu đề ghi chú",
+            key=f"note_title_{category_key}",
+            placeholder="Nhập tiêu đề ghi chú...",
+        )
+        note_content = st.text_area(
+            "📄 Nội dung (Markdown / LaTeX)",
+            key=f"note_content_{category_key}",
+            height=180,
+            placeholder=(
+                "Hỗ trợ Markdown và LaTeX, ví dụ:\n\n"
+                "$E = mc^2$\n\n"
+                "- Điểm 1\n"
+                "- Điểm 2"
+            ),
+        )
+        submitted = st.form_submit_button("💾 Lưu Ghi Chú")
+        if submitted:
+            if note_title.strip() and note_content.strip():
+                add_note(category_key, note_title.strip(), note_content.strip())
+                st.success("✅ Đã lưu ghi chú thành công!")
+                st.rerun()
+            else:
+                st.warning("Vui lòng nhập đầy đủ tiêu đề và nội dung ghi chú.")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# ============================================================
+# 9. AI EXPERIMENT LAB (splits for Vật Lý & Hóa Học)
+# ============================================================
+def render_ai_lab(category_key):
+    st.markdown('<div class="ai-lab-card">', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="lab-title" style="color: var(--cyan);">🧪 AI Experiment Lab</div>',
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        "Hỏi Gemini mô phỏng hiện tượng Vật Lý / Hóa Học. "
+        "Nếu thiếu API key hoặc API lỗi, bộ sinh dữ liệu dự phòng sẽ tự động tạo số liệu — UI không bao giờ đứt đoạn."
+    )
+    query = st.text_input(
+        "🎯 Câu hỏi mô phỏng",
+        key=f"sim_query_{category_key}",
+        placeholder='VD: "Mô phỏng ném ngang v0=15m/s" hoặc "Tốc độ phản ứng bậc 1 theo nhiệt độ"',
+    )
+    if st.button("⚡ Kích hoạt Mô phỏng Gemini", key=f"sim_run_{category_key}"):
+        if not query.strip():
+            st.warning("⚠️ Hãy nhập câu hỏi mô phỏng trước khi kích hoạt.")
         else:
-            for item in filtered_lab:
-                with st.container(border=True):
-                    col1, col2, col3 = st.columns([0.74, 0.13, 0.13])
-                    with col1:
-                        st.subheader(f"🧪 {item['title']}")
-                        if item.get("formula"):
-                            st.caption(f"🛠️ Equipment: {item['formula']}")
-                        if item.get("description"):
-                            st.write(item["description"])
-                    with col2:
-                        with st.popover("✏️ Edit"):
-                            with st.form(f"edit_lab_form_{item['id']}"):
-                                edit_title = st.text_input("Title", value=item.get("title", ""))
-                                edit_equip = st.text_input("Equipment", value=item.get("formula", ""))
-                                edit_desc = st.text_area("Content & Results", value=item.get("description", ""))
-                                if st.form_submit_button("Save Changes"):
-                                    if update_entry(item["id"], {
-                                        "title": edit_title,
-                                        "formula": edit_equip,
-                                        "description": edit_desc
-                                    }):
-                                        st.success("Updated!")
-                                        st.rerun()
-                    with col3:
-                        with st.popover("🗑️ Delete"):
-                            st.write("Confirm deletion?")
-                            if st.button("Delete Now", key=f"del_lab_{item['id']}"):
-                                if delete_entry(item["id"]):
-                                    st.rerun()
+            sim_data = None
+            source = "🛡️ Bộ sinh dữ liệu dự phòng"
+            used_gemini = False
+            if st.session_state.get("gemini_available", False):
+                with st.spinner("⏳ Gemini AI đang xử lý mô phỏng..."):
+                    try:
+                        df, label, sim_type = run_gemini_simulation(query)
+                        sim_data = {
+                            "x": df["x"].tolist(),
+                            "y": df["y"].tolist(),
+                            "label": label,
+                            "sim_type": sim_type,
+                        }
+                        used_gemini = True
+                        source = "✨ Gemini AI"
+                    except Exception:
+                        sim_data = None
+                        used_gemini = False
+            if sim_data is None:
+                try:
+                    df, label, sim_type = fallback_simulation(query)
+                    sim_data = {
+                        "x": df["x"].tolist(),
+                        "y": df["y"].tolist(),
+                        "label": label,
+                        "sim_type": sim_type,
+                    }
+                    source = "🛡️ Bộ sinh dữ liệu dự phòng"
+                except Exception:
+                    sim_data = None
+            if sim_data is None:
+                st.error("❌ Không thể tạo mô phỏng. Vui lòng thử lại với câu hỏi khác.")
+            else:
+                st.session_state[f"sim_data_{category_key}"] = sim_data
+                st.session_state[f"sim_source_{category_key}"] = source
+                st.session_state[f"sim_query_{category_key}_last"] = query.strip()
+                st.rerun()
+    sim_data = st.session_state.get(f"sim_data_{category_key}")
+    if sim_data is not None:
+        source = st.session_state.get(f"sim_source_{category_key}", "🛡️ Bộ sinh dữ liệu dự phòng")
+        st.markdown(f'<span class="badge">{source}</span>', unsafe_allow_html=True)
+        st.markdown(f"### {sim_data.get('label', 'Mô phỏng')}")
+        last_query = st.session_state.get(f"sim_query_{category_key}_last", "")
+        if last_query:
+            st.caption(f"📝 Câu hỏi: {last_query}")
+        amplitude = st.slider(
+            "🎚️ Biên độ (Amplitude)", 0.2, 5.0, 1.0, 0.1, key=f"sim_amp_{category_key}"
+        )
+        frequency = st.slider(
+            "🎚️ Tần số (Frequency)", 0.2, 3.0, 1.0, 0.1, key=f"sim_freq_{category_key}"
+        )
+        phase = st.slider(
+            "🎚️ Pha ban đầu (Phase)", 0.0, 6.28, 0.0, 0.05, key=f"sim_phase_{category_key}"
+        )
+        baseline = st.slider(
+            "🎚️ Dịch chuyển nền (Baseline)", -5.0, 5.0, 0.0, 0.1, key=f"sim_base_{category_key}"
+        )
+        try:
+            x = np.asarray(sim_data["x"], dtype=float)
+            base_y = np.asarray(sim_data["y"], dtype=float)
+            sim_type = sim_data.get("sim_type", "sine")
+            y = apply_simulation_parameters(
+                x, base_y, sim_type, amplitude, frequency, phase, baseline
+            )
+            chart_df = pd.DataFrame({"x": x, "y": y})
+            st.line_chart(chart_df.set_index("x"), height=320)
+        except Exception:
+            try:
+                chart_df = pd.DataFrame({"x": sim_data["x"], "y": sim_data["y"]})
+                st.line_chart(chart_df.set_index("x"), height=320)
+            except Exception:
+                st.warning("⚠️ Không thể vẽ đồ thị cho mô phỏng này.")
+    else:
+        st.info("👆 Nhập câu hỏi mô phỏng và bấm **Kích hoạt Mô phỏng Gemini** để xem số liệu + đồ thị tương tác.")
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# ============================================================
+# 10. SPLIT LAYOUT (VẬT LÝ & HÓA HỌC)
+# ============================================================
+def render_split_layout(category_key):
+    category_info = CATEGORIES[category_key]
+    st.markdown(
+        f'<div class="category-header"><h2>{category_info["label"]} '
+        f'<span style="color:#9AA0AC; font-size:0.9rem;">— {category_info["subtitle"]}</span></h2></div>',
+        unsafe_allow_html=True,
+    )
+    left_col, right_col = st.columns([1, 1], gap="large")
+    with left_col:
+        render_note_editor(category_key)
+        render_note_viewer(category_key)
+    with right_col:
+        render_ai_lab(category_key)
+
+# ============================================================
+# 11. FULL-WIDTH LAYOUT (TOÁN, C++, IELTS)
+# ============================================================
+def render_full_width(category_key):
+    category_info = CATEGORIES[category_key]
+    st.markdown(
+        f'<div class="category-header"><h2>{category_info["label"]} '
+        f'<span style="color:#9AA0AC; font-size:0.9rem;">— {category_info["subtitle"]}</span></h2></div>',
+        unsafe_allow_html=True,
+    )
+    st.markdown('<div class="ai-lab-card">', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="lab-title" style="color: var(--gold);">📝 Note Editor — Tạo Ghi Chú Mới</div>',
+        unsafe_allow_html=True,
+    )
+    if category_key == "ielts":
+        st.caption("Tạo thẻ từ vựng IELTS với từ, loại từ, định nghĩa, ví dụ và ghi chú bổ sung.")
+        with st.form(f"note_form_{category_key}", clear_on_submit=True):
+            word = st.text_input("🔤 Từ / Cụm từ", key=f"ielts_word_{category_key}", placeholder="e.g. Perseverance")
+            word_type = st.selectbox(
+                "🏷️ Loại từ",
+                ["noun", "verb", "adjective", "adverb", "phrase", "idiom"],
+                key=f"ielts_type_{category_key}",
+            )
+            definition = st.text_input("📖 Định nghĩa", key=f"ielts_definition_{category_key}", placeholder="e.g. Continued effort to achieve something")
+            example = st.text_input("✍️ Ví dụ câu", key=f"ielts_example_{category_key}", placeholder="e.g. It takes perseverance to learn C++.")
+            content = st.text_area(
+                "📄 Ghi chú bổ sung (Markdown / LaTeX) — tùy chọn",
+                key=f"ielts_content_{category_key}",
+                height=100,
+                placeholder="Viết thêm tips, collocations, synonyms...",
+            )
+            submitted = st.form_submit_button("💾 Lưu Ghi Chú")
+            if submitted:
+                if not word.strip():
+                    st.warning("Vui lòng nhập từ / cụm từ.")
+                elif not (content.strip() or definition.strip() or example.strip()):
+                    st.warning("Vui lòng nhập ít nhất định nghĩa, ví dụ hoặc ghi chú bổ sung.")
+                else:
+                    add_note(
+                        category_key,
+                        word.strip(),
+                        content.strip(),
+                        {
+                            "type": word_type,
+                            "definition": definition.strip(),
+                            "example": example.strip(),
+                        },
+                    )
+                    st.success("✅ Đã lưu thẻ từ vựng IELTS!")
+                    st.rerun()
+    elif category_key == "cpp":
+        st.caption("Lưu code snippet với ngôn ngữ, đoạn code và mô tả Markdown/LaTeX.")
+        with st.form(f"note_form_{category_key}", clear_on_submit=True):
+            title = st.text_input("💻 Tiêu đề snippet", key=f"cpp_title_{category_key}", placeholder="e.g. Đọc cảm biến LM35")
+            language = st.selectbox(
+                "🌐 Ngôn ngữ",
+                ["cpp", "python", "javascript", "sql", "bash", "java", "csharp"],
+                key=f"cpp_lang_{category_key}",
+            )
+            code = st.text_area("👨‍💻 Code", key=f"cpp_code_{category_key}", height=180, placeholder="void setup() {\n  // code...\n}")
+            content = st.text_area(
+                "📄 Mô tả / Ghi chú (Markdown / LaTeX)",
+                key=f"cpp_content_{category_key}",
+                height=100,
+                placeholder="Mô tả chức năng, thuật toán, hardware pin...",
+            )
+            submitted = st.form_submit_button("💾 Lưu Ghi Chú")
+            if submitted:
+                if title.strip() and code.strip() and content.strip():
+                    add_note(
+                        category_key,
+                        title.strip(),
+                        content.strip(),
+                        {"language": language, "code": code.strip()},
+                    )
+                    st.success("✅ Đã lưu C++ snippet!")
+                    st.rerun()
+                else:
+                    st.warning("Vui lòng nhập đầy đủ tiêu đề, đoạn code và mô tả.")
+    else:
+        st.caption("Soạn thảo nội dung Markdown dài kèm công thức LaTeX trong `$...$` hoặc ô công thức riêng.")
+        with st.form(f"note_form_{category_key}", clear_on_submit=True):
+            title = st.text_input("📐 Tiêu đề công thức / định lý", key=f"math_title_{category_key}", placeholder="e.g. PTVP dao động điều hòa")
+            formula = st.text_input(
+                "📝 Công thức LaTeX (tùy chọn)",
+                key=f"math_formula_{category_key}",
+                placeholder=r"e.g. \int_0^\infty e^{-x^2} dx = \frac{\sqrt{\pi}}{2}",
+            )
+            content = st.text_area(
+                "📄 Nội dung (Markdown / LaTeX)",
+                key=f"math_content_{category_key}",
+                height=200,
+                placeholder="Viết chứng minh, lý thuyết, ví dụ...\n\n$x^2 + y^2 = z^2$",
+            )
+            submitted = st.form_submit_button("💾 Lưu Ghi Chú")
+            if submitted:
+                if title.strip() and content.strip():
+                    extra = {}
+                    if formula.strip():
+                        extra["formula"] = formula.strip()
+                    add_note(category_key, title.strip(), content.strip(), extra)
+                    st.success("✅ Đã lưu ghi chú Toán Học!")
+                    st.rerun()
+                else:
+                    st.warning("Vui lòng nhập đầy đủ tiêu đề và nội dung.")
+    st.markdown('</div>', unsafe_allow_html=True)
+    render_note_viewer(category_key)
+
+# ============================================================
+# 12. SIDEBAR & MAIN ROUTING
+# ============================================================
+with st.sidebar:
+    st.markdown(
+        """
+        <div class="sidebar-brand">
+            <div class="brand-title">🧠 OmniNote</div>
+            <div class="brand-subtitle">& AI Lab v5.0</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.markdown('<div class="divider-gold"></div>', unsafe_allow_html=True)
+    selected_category = st.radio(
+        "📚 CHUYÊN MỤC",
+        options=list(CATEGORIES.keys()),
+        format_func=lambda key: CATEGORIES[key]["label"],
+    )
+    try:
+        total_notes = sum(count_notes(key) for key in CATEGORIES.keys())
+    except Exception:
+        total_notes = 0
+    st.markdown(
+        f'<div class="status-badge">📦 Tổng ghi chú: <b>{total_notes}</b></div>',
+        unsafe_allow_html=True,
+    )
+    if st.session_state.get("supabase_available", False):
+        st.markdown(
+            '<div class="status-badge"><span class="status-dot status-dot-green"></span>🟢 Supabase: Đã kết nối</div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            '<div class="status-badge"><span class="status-dot status-dot-yellow"></span>🟡 Supabase: Local Session</div>',
+            unsafe_allow_html=True,
+        )
+    if st.session_state.get("gemini_available", False):
+        st.markdown(
+            '<div class="status-badge"><span class="status-dot status-dot-green"></span>🔑 Gemini: API Ready</div>',
+            unsafe_allow_html=True,
+        )
+    else:
+        st.markdown(
+            '<div class="status-badge"><span class="status-dot status-dot-grey"></span>⚪ Gemini: Fallback Mode</div>',
+            unsafe_allow_html=True,
+        )
+
+st.title("OmniNote & AI Lab v5.0")
+st.caption(
+    "💎 Trung tâm ghi chú học thuật cá nhân — Vật Lý · Hóa Học · Toán Học · C++ & CS · IELTS Vocabulary — "
+    "tích hợp AI Simulation Lab."
+)
+st.markdown('<div class="divider-gold"></div>', unsafe_allow_html=True)
+
+if CATEGORIES[selected_category]["ai_lab"]:
+    render_split_layout(selected_category)
+else:
+    render_full_width(selected_category)
+
+st.divider()
+st.caption("© 2026 OmniNote & AI Lab v5.0 — Streamlit · Supabase-ready · Gemini Fallback Engine")
