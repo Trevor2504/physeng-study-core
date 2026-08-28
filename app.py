@@ -722,6 +722,44 @@ _init_sim_states()
 # ============================================================
 # 8. SIMULATION ENGINE — GEMINI INTEGRATION
 # ============================================================
+def _list_available_models():
+    preferred = [
+        "gemini-3.6-flash",
+        "gemini-3.1-flash",
+        "gemini-3-flash-preview",
+        "gemini-2.5-flash",
+        "gemini-flash-latest",
+        "gemini-flash",
+        "gemini-2.0-flash",
+        "gemini-1.5-flash",
+    ]
+    exclude_keywords = ["tts", "image", "audio", "embedding"]
+    available = []
+    try:
+        for model in genai.list_models():
+            model_name = model.name.replace("models/", "")
+            methods = model.supported_generation_methods or []
+            if "flash" not in model_name.lower():
+                continue
+            if "generateContent" not in methods:
+                continue
+            if any(kw in model_name.lower() for kw in exclude_keywords):
+                continue
+            available.append(model_name)
+    except Exception:
+        pass
+    if not available:
+        return preferred
+    for p in preferred:
+        if p in available:
+            ordered = [p]
+            for m in available:
+                if m != p and m not in ordered:
+                    ordered.append(m)
+            return ordered
+    return available
+
+
 def run_gemini_sim_config(query, category_key):
     api_key = st.session_state.get("gemini_api_key", "")
     if not api_key:
@@ -737,8 +775,9 @@ def run_gemini_sim_config(query, category_key):
         "Known parameter keys: v0, angle, gravity, drag, length, theta0, damping, height, "
         "restitution, particleCount, temperature, reactantCount, Ea, k0."
     )
+    model_names = _list_available_models()
     last_error = None
-    for model_name in ["gemini-2.0-flash", "gemini-1.5-flash"]:
+    for model_name in model_names:
         try:
             model = genai.GenerativeModel(model_name)
             response = model.generate_content(prompt)
