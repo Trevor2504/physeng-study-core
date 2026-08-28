@@ -639,6 +639,7 @@ def build_sim_config(sim_type, overrides=None, description=""):
             params[d["key"]] = round(clamped, 6)
     return {
         "sim_type": sim_type,
+        "simType": sim_type,
         "params": params,
         "title": model["title"],
         "emoji": model["emoji"],
@@ -1113,8 +1114,10 @@ def _safe_json(obj):
 
 
 def build_simulation_html(config, live_defs):
+    js_config = dict(config)
+    js_config["simType"] = config.get("sim_type", "projectile")
     html = CANVAS_TEMPLATE
-    html = html.replace("__CONFIG_JSON__", _safe_json(config))
+    html = html.replace("__CONFIG_JSON__", _safe_json(js_config))
     html = html.replace("__LIVE_JSON__", _safe_json(live_defs))
     return html
 
@@ -1325,20 +1328,21 @@ def render_ai_lab(category_key):
                 value = params[pdef["key"]]
             except Exception:
                 value = pdef["min"]
+            sim_type_key = config.get("sim_type", "projectile")
             widget_value = st.slider(
                 pdef["label"],
                 min_value=pdef["min"],
                 max_value=pdef["max"],
                 value=value,
                 step=pdef["step"],
-                key=f"slider_{category_key}_{pdef['key']}",
+                key=f"slider_{category_key}_{sim_type_key}_{pdef['key']}",
             )
             params[pdef["key"]] = widget_value
     st.session_state[f"sim_config_{category_key}"] = config
 
     live_defs = [d for d in param_defs if d.get("live", False)]
     sim_html = build_simulation_html(config, live_defs)
-    component_height = 520 + 40 * len(live_defs)
+    component_height = 560 + 52 * len(live_defs)
     components.html(sim_html, height=component_height, scrolling=False)
 
     try:
